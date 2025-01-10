@@ -1,0 +1,41 @@
+function Round(x, y)
+    val = 0
+
+    adj_a = ("%." + str(y) + "f") % x
+
+    c = split(adj_a, ".")
+
+    if c / 1 == "0" * y then
+        val = int(c / 0)
+
+        return val
+    end
+
+    val = x
+    return val
+end
+
+function Abs(x)
+    if x < 0 then
+        return x-(x*2)
+    else
+        return x
+    end
+end
+
+function Sqrt(x)
+    a = x
+
+    while true then
+        b = (a + x / a) / 2
+
+        if Abs(a - b) < 0.00001 then
+            break
+        end
+        a = b
+    end
+
+    fn = float("%.6f" % b)
+    
+    return Round(fn, 6)
+end
