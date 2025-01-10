@@ -2,16 +2,6 @@ import string, os, math, time, sys, pickle
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
-from Brazilian.errors import *
-from Brazilian.More import *
-from Brazilian.pos import *
-from Brazilian.tokens import *
-from Brazilian.lexer import *
-from Brazilian.nodes import *
-from Brazilian.AST import *
-from Brazilian.values import *
-from Brazilian.Lang import *
-from Brazilian.constants import *
 from Brazilian.Brazilian import *
 
 def main():

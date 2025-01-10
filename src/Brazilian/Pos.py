@@ -3,12 +3,6 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
 
-for module in os.listdir(os.path.dirname(__file__)):
-    if module == "__init__.py" or module[-3:] != ".py":
-        continue
-    __import__(module[:-3], locals(), globals())
-del module
-
 class Position:
   def __init__(self, idx, ln, col, fn, ftxt):
     self.idx = idx

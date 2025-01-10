@@ -2,12 +2,11 @@ import string, os, math, time, sys, pickle, pydantic, importlib
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
-
-for module in os.listdir(os.path.dirname(__file__)):
-    if module == "__init__.py" or module[-3:] != ".py":
-        continue
-    __import__(module[:-3], locals(), globals())
-del module
+from .Pos import *
+from .Constants import *
+from .More import *
+from .Errors import *
+from .Tokens import *
 
 class Lexer:
   def __init__(self, fn, text):

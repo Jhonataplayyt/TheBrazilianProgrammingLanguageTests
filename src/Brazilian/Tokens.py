@@ -1,13 +1,7 @@
-import string, os, math, time, sys, pickle, pydantic, importlib
+import string, os, math, time, sys, pickle, pydantic
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
-
-for module in os.listdir(os.path.dirname(__file__)):
-    if module == "__init__.py" or module[-3:] != ".py":
-        continue
-    __import__(module[:-3], locals(), globals())
-del module
 
 class TokenType(Enum):
   INT				 = auto()

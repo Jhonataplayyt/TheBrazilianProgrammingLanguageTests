@@ -1,14 +1,7 @@
-from Constants import *
-from Errors import *
-from More import *
-from Pos import *
-from Tokens import *
-from Nodes import *
-from Values import *
-from Lexer import *
-from AST import *
-from Lang import *
-from Brazilian import *
+from .Values import *
+from .Lexer import *
+from .AST import *
+from .Lang import *
 
 def run(fn, text, context=None, entry_pos=None):
   # Generate tokens
