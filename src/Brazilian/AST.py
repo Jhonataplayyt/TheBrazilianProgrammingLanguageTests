@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
 from .Tokens import *
-from .More import *
+from .Values import *
+from .Errors import *
 
 class ParseResult:
   def __init__(self):

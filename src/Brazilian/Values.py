@@ -3,11 +3,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
 from .Errors import *
-from .More import *
-from .Lang import *
-from .AST import *
-from .Pos import *
-from .Brazilian import *
+from .Lang import Interpreter
+from .Brazilian import run
 
 class Number(Value):
   def __init__(self, value):

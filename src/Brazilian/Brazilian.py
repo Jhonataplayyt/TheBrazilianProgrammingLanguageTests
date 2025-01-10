@@ -1,7 +1,9 @@
-from .Values import *
-from .Lexer import *
-from .AST import *
-from .Lang import *
+from .More import global_symbol_table
+from .Lexer import Lexer
+from .Errors import RTError
+from .Values import Number
+from .AST import Parser, Context
+from .Lang import Interpreter
 
 def run(fn, text, context=None, entry_pos=None):
   # Generate tokens

@@ -4,9 +4,8 @@ from enum import Enum, auto
 from typing import *
 from .Pos import *
 from .Constants import *
-from .More import *
-from .Errors import *
 from .Tokens import *
+from .Errors import *
 
 class Lexer:
   def __init__(self, fn, text):
