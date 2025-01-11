@@ -2,9 +2,10 @@ import string, os, math, time, sys, pickle, pydantic, importlib
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
-from .Pos import *
-from .Constants import *
-from .Tokens import *
+from .Pos import Position, create_fake_pos
+from .Constants import DIGITS, VALID_IDENTIFIERS
+from .More import to_bytes
+from .Tokens import SINGLE_CHAR_TOKS, Token, TokenType, KEYWORDS
 from .Errors import *
 
 class Lexer:
