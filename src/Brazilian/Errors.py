@@ -1,8 +1,6 @@
 import string, os, math, time, sys, pickle, pydantic, importlib
-from dataclasses import dataclass
-from enum import Enum, auto
-from typing import *
 from .More import RTResult, string_with_arrows
+from Values import Iterator
 
 class Value:
   def __init__(self):

@@ -2,7 +2,7 @@ import string, os, math, time, sys, pickle
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import *
-from Brazilian.Brazilian import *
+from Brazilian import *
 
 def main():
   try:

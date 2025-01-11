@@ -1,13 +1,10 @@
-import string, os, math, time, sys, pickle, pydantic, importlib
-from dataclasses import dataclass
-from enum import Enum, auto
-from typing import *
-from .Nodes import *
+import os
+from .Nodes import TryNode
 from .Errors import RTError
 from .AST import TryError
 from Tokens import TokenType
 from Constants import IMPORT_PATHS, IMPORT_PATH_NAME
-from .Values import RTResult, Bin, Bytes, Number, String, Function, SymbolTable, StructInstance, Context
+from .Values import RTResult, Bin, Bytes, Number, String, Function, SymbolTable, StructInstance, Context, List, Dict
 from .Brazilian import run
 
 class Interpreter:

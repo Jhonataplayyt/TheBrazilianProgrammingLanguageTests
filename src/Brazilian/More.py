@@ -1,8 +1,5 @@
 import string, os, math, time, sys, pickle, pydantic, importlib
-from dataclasses import dataclass
-from enum import Enum, auto
-from typing import *
-from .Values import SymbolTable, BuiltInFunction, Number, String
+from .Values import SymbolTable, BuiltInFunction, Number, String, List
 from .Pos import Position, create_fake_pos
 
 def string_with_arrows(text, pos_start, pos_end):
