@@ -1,0 +1,3 @@
+import "C:/Users/tempe/Desktop\AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/modules/os.br"
+
+rd: int = 11

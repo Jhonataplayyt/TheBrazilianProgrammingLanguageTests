@@ -1,4 +1,12 @@
-function Round(x, y)
+struct Math
+    Round
+    Abs
+    Sqrt
+end
+
+math = Math{}
+
+math.Round = function Round(x, y)
     val = 0
 
     adj_a = ("%." + str(y) + "f") % x
@@ -15,7 +23,7 @@ function Round(x, y)
     return val
 end
 
-function Abs(x)
+math.Abs = function Abs(x)
     if x < 0 then
         return x-(x*2)
     else
@@ -23,13 +31,13 @@ function Abs(x)
     end
 end
 
-function Sqrt(x)
+math.Sqrt = function Sqrt(x)
     a = x
 
     while true then
         b = (a + x / a) / 2
 
-        if Abs(a - b) < 0.00001 then
+        if math.Abs(a - b) < 0.00001 then
             break
         end
         a = b
@@ -37,5 +45,5 @@ function Sqrt(x)
 
     fn = float("%.6f" % b)
     
-    return Round(fn, 6)
+    return math.Round(fn, 6)
 end

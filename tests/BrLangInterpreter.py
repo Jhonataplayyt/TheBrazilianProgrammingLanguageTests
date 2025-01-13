@@ -89,7 +89,7 @@ files = {}
 
 IMPORT_PATH_NAME = ".path"
 if not os.path.isfile(IMPORT_PATH_NAME):
-  IMPORT_PATHS = [".", os.getcwd() + "/std"]
+  IMPORT_PATHS = ["."]
   with open(IMPORT_PATH_NAME, "w") as f:
     f.write("\n".join(IMPORT_PATHS))
 else:
@@ -317,6 +317,7 @@ class TokenType(Enum):
   BIN        = auto()
   BYTES  		 = auto()
   IDENTIFIER = auto()
+  TYPES      = auto()
   KEYWORD		 = auto()
   PLUS     	 = auto()
   MINUS    	 = auto()
@@ -425,6 +426,8 @@ SINGLE_CHAR_TOKS: Dict[str, TokenType] = {
   ":": TokenType.COLON,
   ".": TokenType.DOT,
 }
+
+TYPES = ["int", "float", "string", 'binary', "bytes", "list", "dict"]
 
 class Lexer:
   def __init__(self, fn, text):
@@ -537,7 +540,7 @@ class Lexer:
       id_str += self.current_char
       self.advance()
 
-    tok_type = TokenType.KEYWORD if id_str in KEYWORDS else TokenType.IDENTIFIER
+    tok_type = TokenType.KEYWORD if id_str in KEYWORDS else TokenType.TYPES if id_str in TYPES else TokenType.IDENTIFIER
     return Token(tok_type, id_str, pos_start, self.pos)
 
   def make_minus_or_arrow(self):
@@ -1213,19 +1216,51 @@ class Parser:
     var_name_tok = self.current_tok
 
     self.advance(res)
-    
-    if self.current_tok.type != TokenType.EQ:
-      return res.failure(InvalidSyntaxError(
-        self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected '='"
-      ))
-    
-    self.advance(res)
 
-    assign_expr = res.register(self.expr())
-    if res.error: return res
+    if self.current_tok.type == TokenType.COLON:
+      self.advance
+      if self.current_tok.type in TYPES: 
+        type = str(self.current_tok)
+        self.advance()
 
-    return res.success(VarAssignNode(var_name_tok, assign_expr))
+        if self.current_tok.type != TokenType.EQ:
+          return res.failure(InvalidSyntaxError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            "Expected '='"
+          ))
+    
+        self.advance(res)
+
+        assign_expr = res.register(self.expr())
+        if res.error: return res
+
+        if type == "int":
+          return res.success(VarAssignNode(var_name_tok, Number(int(assign_expr))))
+        elif type == "float":
+          return res.success(VarAssignNode(var_name_tok, Number(float(assign_expr))))
+        elif type == "string":
+          return res.success(VarAssignNode(var_name_tok, String(str(assign_expr))))
+        elif type == "list":
+          return res.success(VarAssignNode(var_name_tok, List(list(assign_expr))))
+        elif type == "dict":
+          return res.success(VarAssignNode(var_name_tok, Dict(dict(assign_expr))))
+        else:
+          return res.failure(ValueError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            f"This type: '{type}' not in types."
+          ))
+    else:
+      if self.current_tok.type != TokenType.EQ:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected '='"
+        ))
+    
+      self.advance(res)
+
+      assign_expr = res.register(self.expr())
+      if res.error: return res
+      return res.success(VarAssignNode(var_name_tok, assign_expr))  
 
   def comp_expr(self):
     res = ParseResult()
@@ -3333,9 +3368,9 @@ class BuiltInFunction(BaseFunction):
     listA.elements.extend(listB.elements)
     return RTResult().success(Number.null)
   
-  @args(["list"])
+  @args(["value"])
   def execute_len(self, exec_ctx):
-    list_ = exec_ctx.symbol_table.get("list")
+    list_ = exec_ctx.symbol_table.get("value")
 
     if not isinstance(list_, List):
       return RTResult().failure(RTError(
@@ -3382,163 +3417,6 @@ class BuiltInFunction(BaseFunction):
 
     return RTResult().success(Number.null)
 
-  @args(["fn", "mode"], [None, String("r")])
-  def execute_open(self, exec_ctx):
-    sym = exec_ctx.symbol_table
-    fake_pos = create_fake_pos("<built-in function open>")
-    res = RTResult()
-
-    fn = sym.get("fn")
-    if not isinstance(fn, String):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"1st argument of function 'open' ('fn') must be String",
-        exec_ctx
-      ))
-    fn = fn.value
-
-    mode = sym.get("mode")
-    if not isinstance(mode, String):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"2nd argument of function 'open' ('mode') must be String",
-        exec_ctx
-      ))
-    mode = mode.value
-
-    try:
-      f = open(fn, mode)
-    except (TypeError, OSError) as err:
-      if isinstance(err, TypeError):
-        return res.failure(RTError(
-          fake_pos, fake_pos,
-          f"Invalid file open mode: '{mode}'",
-          exec_ctx
-        ))
-      elif isinstance(err, FileNotFoundError):
-        return res.failure(RTError(
-          fake_pos, fake_pos,
-          f"Cannot find file '{fn}'",
-          exec_ctx
-        ))
-      else:
-        return res.failure(RTError(
-          fake_pos, fake_pos,
-          f"{err.args[-1]}",
-          exec_ctx
-        ))
-
-    fd = f.fileno()
-    files[fd] = f
-
-    return res.success(Number(fd).set_pos(fake_pos, fake_pos).set_context(exec_ctx))
-  
-  @args(["fd", "bytes"])
-  def execute_read(self, exec_ctx):
-    sym = exec_ctx.symbol_table
-    fake_pos = create_fake_pos("<built-in function read>")
-    res = RTResult()
-
-    fd = sym.get("fd")
-    if not isinstance(fd, Number):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"1st argument of function 'read' ('fd') must be Number",
-        exec_ctx
-      ))
-    fd = fd.value
-
-    bts = sym.get("bytes")
-    if not isinstance(bts, Number):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"2nd argument of function 'read' ('bytes') must be Number",
-        exec_ctx
-      ))
-    bts = bts.value
-
-    try:
-      result = os.read(fd, bts).decode("utf-8")
-    except OSError:
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"Invalid file descriptor: {fd}",
-        exec_ctx
-      ))
-    
-    return res.success(String(result).set_pos(fake_pos, fake_pos).set_context(exec_ctx))
-
-  @args(["fd", "bytes"])
-  def execute_write(self, exec_ctx):
-    sym = exec_ctx.symbol_table
-    fake_pos = create_fake_pos("<built-in function write>")
-    res = RTResult()
-
-    fd = sym.get("fd")
-    if not isinstance(fd, Number):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"1st argument of function 'write' ('fd') must be Number",
-        exec_ctx
-      ))
-    fd = fd.value
-
-    bts = sym.get("bytes")
-    if not isinstance(bts, String):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"2nd argument of function 'write' ('bytes') must be String",
-        exec_ctx
-      ))
-    bts = bts.value
-
-    try:
-      num = os.write(fd, bytes(bts, "utf-8"))
-    except OSError:
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"Invalid file descriptor: {fd}",
-        exec_ctx
-      ))
-    
-    return res.success(Number(num).set_pos(fake_pos, fake_pos).set_context(exec_ctx))
-
-  @args(["fd"])
-  def execute_close(self, exec_ctx):
-    sym = exec_ctx.symbol_table
-    fake_pos = create_fake_pos("<built-in function close>")
-    res = RTResult()
-
-    fd = sym.get("fd")
-    if not isinstance(fd, Number):
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"1st argument of function 'close' ('fd') must be Number",
-        exec_ctx
-      ))
-    fd = fd.value
-    std_desc = ["stdin", "stdout", "stderr"]
-
-    if fd < 3:
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"Cannot close {std_desc[fd]}",
-        exec_ctx
-      ))
-
-    try:
-      os.close(fd)
-    except OSError:
-      return res.failure(RTError(
-        fake_pos, fake_pos,
-        f"Invalid file descriptor '{fd}'",
-        exec_ctx
-      ))
-
-    del files[fd]
-
-    return res.success(Number.null)
-
   @args(["secs"])
   def execute_wait(self, exec_ctx):
     sym = exec_ctx.symbol_table
@@ -3581,10 +3459,6 @@ BuiltInFunction.pop             = BuiltInFunction("pop")
 BuiltInFunction.extend          = BuiltInFunction("extend")
 BuiltInFunction.len		          = BuiltInFunction("len")
 BuiltInFunction.run			        = BuiltInFunction("run")
-BuiltInFunction.open            = BuiltInFunction("open")
-BuiltInFunction.read            = BuiltInFunction("read")
-BuiltInFunction.write           = BuiltInFunction("write")
-BuiltInFunction.close           = BuiltInFunction("close")
 BuiltInFunction.wait            = BuiltInFunction("wait")
 
 class Iterator(Value):
@@ -4329,19 +4203,15 @@ global_symbol_table.set("print_ret", BuiltInFunction.print_ret)
 global_symbol_table.set("input", BuiltInFunction.input)
 global_symbol_table.set("clear", BuiltInFunction.clear)
 global_symbol_table.set("cls", BuiltInFunction.clear)
-global_symbol_table.set("is_num", BuiltInFunction.is_number)
-global_symbol_table.set("is_str", BuiltInFunction.is_string)
+global_symbol_table.set("is_number", BuiltInFunction.is_number)
+global_symbol_table.set("is_string", BuiltInFunction.is_string)
 global_symbol_table.set("is_list", BuiltInFunction.is_list)
-global_symbol_table.set("is_fun", BuiltInFunction.is_function)
+global_symbol_table.set("is_function", BuiltInFunction.is_function)
 global_symbol_table.set("append", BuiltInFunction.append)
 global_symbol_table.set("pop", BuiltInFunction.pop)
 global_symbol_table.set("extend", BuiltInFunction.extend)
 global_symbol_table.set("len", BuiltInFunction.len)
 global_symbol_table.set("Run", BuiltInFunction.run)
-global_symbol_table.set("open", BuiltInFunction.open)
-global_symbol_table.set("read", BuiltInFunction.read)
-global_symbol_table.set("write", BuiltInFunction.write)
-global_symbol_table.set("close", BuiltInFunction.close)
 global_symbol_table.set("wait", BuiltInFunction.wait)
 
 
@@ -4383,7 +4253,7 @@ def isLangExtension(x):
 	else:
 		y = x.split('.')
 
-		print("Extension Error: The extension needs be '.br', not '." + y[1] + "'")
+		print("Extension Error: The extension needs be '.br', not '." + y[-1] + "'")
 
 		exit()
 
@@ -4391,7 +4261,7 @@ def isLangExtension(x):
 
 def main():
   #try:
-    fn = "C:\\Users\\tempe\\Desktop\\AllSv\\BrazilianTestInterpreter\\BrazilianProgrammingLanguage\\tests\\arq.br"#tests\\arq.br" #sys.argv[1]
+    fn = sys.argv[1]
     with open(isLangExtension(fn), "r") as f:
       code = open(fn, 'r').read()
     _, error = run(fn, code)

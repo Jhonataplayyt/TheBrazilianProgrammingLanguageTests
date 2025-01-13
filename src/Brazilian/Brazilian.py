@@ -44,6 +44,6 @@ def isLangExtension(x):
 	else:
 		y = x.split('.')
 
-		print("Extension Error: The extension needs be '.br', not '." + y[1] + "'")
+		print("Extension Error: The extension needs be '.br', not '." + y[-1] + "'")
 
 		exit(1)
