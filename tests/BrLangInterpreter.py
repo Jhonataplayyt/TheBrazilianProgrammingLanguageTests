@@ -1224,12 +1224,13 @@ class Parser:
     var_name_tok = self.current_tok
 
     self.advance(res)
+    #print(self.current_tok.type == TokenType.COLON)
     if self.current_tok.type == TokenType.COLON:
       self.advance(res)
       if self.current_tok.type in TYPES: 
-        print(self.current_tok.type)
+        #print(self.current_tok.type)
         type = str(self.current_tok)
-        print(self.current_tok)
+        #print(self.current_tok)
         self.advance(res)
 
         if self.current_tok.type != TokenType.EQ:
@@ -1256,7 +1257,7 @@ class Parser:
       else:
         return res.failure(ValueError(
           self.current_tok.pos_start, self.current_tok.pos_end,
-          f"This type: '{type}' not in types."
+          f"This type: '{str(self.current_tok)}' not in types."
         ))
     else:
       if self.current_tok.type != TokenType.EQ:
@@ -4230,6 +4231,8 @@ def run(fn, text, context=None, entry_pos=None):
   tokens, error = lexer.make_tokens()
   if error: return None, error
   
+  print(tokens)
+
   # Generate AST
   parser = Parser(tokens)
   ast = parser.parse()

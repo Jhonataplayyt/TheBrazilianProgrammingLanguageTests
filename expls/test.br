@@ -1,1 +1,3 @@
 rd: int = 11
+
+println(rd)
