@@ -427,7 +427,15 @@ SINGLE_CHAR_TOKS: Dict[str, TokenType] = {
   ".": TokenType.DOT,
 }
 
-TYPES = ["int", "float", "string", 'binary', "bytes", "list", "dict"]
+TYPES = [
+  "int",
+  "float", 
+  "string", 
+  "binary", 
+  "bytes", 
+  "list", 
+  "dict"
+]
 
 class Lexer:
   def __init__(self, fn, text):
@@ -540,7 +548,7 @@ class Lexer:
       id_str += self.current_char
       self.advance()
 
-    tok_type = TokenType.KEYWORD if id_str in KEYWORDS else TokenType.TYPES if id_str in TYPES else TokenType.IDENTIFIER
+    tok_type = TokenType.KEYWORD if id_str in KEYWORDS else (TokenType.TYPES if id_str in TYPES else TokenType.IDENTIFIER)
     return Token(tok_type, id_str, pos_start, self.pos)
 
   def make_minus_or_arrow(self):
@@ -1216,12 +1224,13 @@ class Parser:
     var_name_tok = self.current_tok
 
     self.advance(res)
-
     if self.current_tok.type == TokenType.COLON:
-      self.advance
+      self.advance(res)
       if self.current_tok.type in TYPES: 
+        print(self.current_tok.type)
         type = str(self.current_tok)
-        self.advance()
+        print(self.current_tok)
+        self.advance(res)
 
         if self.current_tok.type != TokenType.EQ:
           return res.failure(InvalidSyntaxError(
@@ -1244,11 +1253,11 @@ class Parser:
           return res.success(VarAssignNode(var_name_tok, List(list(assign_expr))))
         elif type == "dict":
           return res.success(VarAssignNode(var_name_tok, Dict(dict(assign_expr))))
-        else:
-          return res.failure(ValueError(
-            self.current_tok.pos_start, self.current_tok.pos_end,
-            f"This type: '{type}' not in types."
-          ))
+      else:
+        return res.failure(ValueError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          f"This type: '{type}' not in types."
+        ))
     else:
       if self.current_tok.type != TokenType.EQ:
         return res.failure(InvalidSyntaxError(
