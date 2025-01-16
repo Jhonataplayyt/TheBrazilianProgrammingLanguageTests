@@ -1,3 +1,9 @@
-rd: int = 11
+class test
+    function add(x, y)
+        return x + y  # Corrigido para usar x e y
+    end
+end
 
-println(rd)
+a = test()
+
+println(a.add(5, 6))  # Chamada correta da função

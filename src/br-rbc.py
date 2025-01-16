@@ -2,6 +2,8 @@ import sys
 import re
 from Brazilian import *
 
+sys.stdout.reconfigure(encoding='utf-8')
+
 def isLangExtension(x):
     if x.endswith(".bro"):
         return x
@@ -87,11 +89,14 @@ def main():
                 print(error.as_string(), file=sys.stderr)
         except Exception as e:
             print(f"Intern Error: {e}")
-    except Exception as e:
+    except:
         try:
-            print(f"Error: file or parameter not exists {sys.argv[1]} : {e}")
+            print(f"Error: file or parameter not exists {sys.argv[1]}")
         except:
-            print(f"Error: To work, it needs a file or parameter.")
+            try:
+                print(f"Error: To work, it needs a file or parameter.")
+            except NameError:
+                return
 
 if __name__ == '__main__':
     main()

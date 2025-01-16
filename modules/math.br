@@ -9,12 +9,12 @@ math = Math{}
 math.Round = function Round(x, y)
     val = 0
 
-    adj_a = ("%." + str(y) + "f") % x
+    adj_a = ("%." + Str(y) + "f") % x
 
     c = split(adj_a, ".")
 
-    if c / 1 == "0" * y then
-        val = int(c / 0)
+    if c[1] == "0" * y then
+        val = Int(c[0])
 
         return val
     end
@@ -43,7 +43,7 @@ math.Sqrt = function Sqrt(x)
         a = b
     end
 
-    fn = float("%.6f" % b)
+    fn = Float("%.6f" % b)
     
     return math.Round(fn, 6)
 end

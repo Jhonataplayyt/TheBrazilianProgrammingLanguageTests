@@ -2,6 +2,8 @@ from Brazilian import *
 import dis
 import sys
 
+sys.stdout.reconfigure(encoding='utf-8')
+
 def main():
     try:
         fn = sys.argv[1]
@@ -12,13 +14,13 @@ def main():
             code = f.read()
 
         bytess = compile(
-            f'from The.Brazilian import run\nrun("""{fn}""", """{code}""")',
+            f'from Brazilian import run\nrun("""{fn}""", """{code}""")',
             '<string>',
             'exec'
         )
         disassembler = '\n'.join([line for line in dis.Bytecode(bytess).dis().splitlines()])
 
-        output_file = isLangExtension(fn).replace('.br', '.bro')
+        output_file = (isLangExtension(fn)[:-2] + "bro")
         with open(output_file, "wb") as f_out:
             f_out.write(''.join(f'\\{ord(c):03o}' for c in disassembler).encode('utf-8'))
         

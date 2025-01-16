@@ -431,7 +431,7 @@ TYPES = [
   "int",
   "float", 
   "string", 
-  "binary", 
+  "bin", 
   "bytes", 
   "list", 
   "dict"
@@ -457,6 +457,7 @@ class Lexer:
         tt = SINGLE_CHAR_TOKS[self.current_char]
         pos = self.pos.copy()
         self.advance()
+
         tokens.append(Token(tt, pos_start=pos))
       elif self.current_char.isspace():
         self.advance()
@@ -1032,6 +1033,7 @@ class Parser:
 
   def parse(self):
     res = self.statements()
+
     if not res.error and self.current_tok.type != TokenType.EOF:
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1212,27 +1214,96 @@ class Parser:
     return res.success(node)
 
   def assign_expr(self):
-    res = ParseResult()
-    pos_start = self.current_tok.pos_start
+      res = ParseResult()
+      pos_start = self.current_tok.pos_start
 
-    if self.current_tok.type != TokenType.IDENTIFIER: 
-      return res.failure(InvalidSyntaxError(
-        self.current_tok.pos_start, self.current_tok.pos_end,
-        "Expected 'if', 'for', 'while', 'function', 'namespace', int, float, identifier, '+', '-', '(', '[', '{' or 'not'"
-      ))
+      if self.current_tok.type != TokenType.IDENTIFIER: 
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected 'if', 'for', 'while', 'function', 'namespace', int, float, identifier, '+', '-', '(', '[', '{' or 'not'"
+        ))
     
-    var_name_tok = self.current_tok
+      var_name_tok = self.current_tok
 
-    self.advance(res)
-    #print(self.current_tok.type == TokenType.COLON)
-    if self.current_tok.type == TokenType.COLON:
       self.advance(res)
-      if self.current_tok.type in TYPES: 
-        #print(self.current_tok.type)
-        type = str(self.current_tok)
-        #print(self.current_tok)
+      if self.current_tok.value in TYPES:
+        Type = self.current_tok.value
         self.advance(res)
 
+        if self.current_tok.type != TokenType.EQ:
+          return res.failure(InvalidSyntaxError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            "Expected '='"
+          ))
+    
+        self.advance(res)
+        is_type = self.current_tok.value
+
+        assign_expr = res.register(self.expr())
+        if res.error: return res
+
+        if Type == "int":
+          if isinstance(assign_expr, NumberNode) and isinstance(is_type, int):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be int"
+            ))
+        elif Type == "float":
+          if isinstance(assign_expr, NumberNode) and isinstance(is_type, float):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be int"
+            ))
+        elif Type == "string":
+          if isinstance(assign_expr, StringNode) and isinstance(is_type, string):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be string"
+            ))
+        elif Type == "list":
+          if isinstance(assign_expr, ListNode) and isinstance(is_type, list):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be list"
+            ))
+        elif Type == "dict":
+          if isinstance(assign_expr, DictNode) and isinstance(is_type, dict):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be dictionary"
+            ))
+        elif Type == "bin":
+          if isinstance(assign_expr, BinNode):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be dictionary"
+            ))
+        elif Type == "bytes":
+          if isinstance(assign_expr, ByteNode):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be dictionary"
+            ))
+        else:
+          return res.failure(ValueError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            f"This type: '{str(self.current_tok)}' not in types."
+          ))
+      else:
         if self.current_tok.type != TokenType.EQ:
           return res.failure(InvalidSyntaxError(
             self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1243,34 +1314,7 @@ class Parser:
 
         assign_expr = res.register(self.expr())
         if res.error: return res
-
-        if type == "int":
-          return res.success(VarAssignNode(var_name_tok, Number(int(assign_expr))))
-        elif type == "float":
-          return res.success(VarAssignNode(var_name_tok, Number(float(assign_expr))))
-        elif type == "string":
-          return res.success(VarAssignNode(var_name_tok, String(str(assign_expr))))
-        elif type == "list":
-          return res.success(VarAssignNode(var_name_tok, List(list(assign_expr))))
-        elif type == "dict":
-          return res.success(VarAssignNode(var_name_tok, Dict(dict(assign_expr))))
-      else:
-        return res.failure(ValueError(
-          self.current_tok.pos_start, self.current_tok.pos_end,
-          f"This type: '{str(self.current_tok)}' not in types."
-        ))
-    else:
-      if self.current_tok.type != TokenType.EQ:
-        return res.failure(InvalidSyntaxError(
-          self.current_tok.pos_start, self.current_tok.pos_end,
-          "Expected '='"
-        ))
-    
-      self.advance(res)
-
-      assign_expr = res.register(self.expr())
-      if res.error: return res
-      return res.success(VarAssignNode(var_name_tok, assign_expr))  
+        return res.success(VarAssignNode(var_name_tok, assign_expr))  
 
   def comp_expr(self):
     res = ParseResult()
@@ -4230,8 +4274,6 @@ def run(fn, text, context=None, entry_pos=None):
   lexer = Lexer(fn, text)
   tokens, error = lexer.make_tokens()
   if error: return None, error
-  
-  print(tokens)
 
   # Generate AST
   parser = Parser(tokens)
