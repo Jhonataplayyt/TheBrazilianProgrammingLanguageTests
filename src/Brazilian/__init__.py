@@ -102,6 +102,8 @@ VALID_IDENTIFIERS = LETTERS + DIGITS + "$_"
 global_variables = {}
 
 temp_func_name = []
+
+classes = {}
 #######################################
 # ERRORS
 #######################################
@@ -178,15 +180,13 @@ class Value:
     return RTResult().failure(self.illegal_operation())
   
   def get_dot(self, verb):
-    t = type(self)
-    attr = f"inner_{verb}"
-    if not hasattr(t, attr):
-      return None, RTError(
+    if hasattr(self, verb):
+        return getattr(self, verb), None
+    return None, RTError(
         self.pos_start, self.pos_end,
-        f"Object of type '{t.__name__}' has no property of name '{verb}'",
+        f"'{type(self).__name__}' object has no attribute '{verb}'",
         self.context
-      )
-    return getattr(t, attr), None
+    )
 
   def set_dot(self, verb, value):
     return None, self.illegal_operation(verb, value)
@@ -770,32 +770,6 @@ class FuncDefNode:
 
     self.pos_end = self.body_node.pos_end
 
-class MethodDefNode:
-  def __init__(self, var_name_tok, arg_name_toks, defaults, dynamics, body_node, should_auto_return):
-    self.var_name_tok = var_name_tok
-    self.arg_name_toks = arg_name_toks
-    self.defaults = defaults
-    self.dynamics = dynamics
-    self.body_node = body_node
-    self.should_auto_return = should_auto_return
-
-    if self.var_name_tok:
-      self.pos_start = self.var_name_tok.pos_start
-    elif len(self.arg_name_toks) > 0:
-      self.pos_start = self.arg_name_toks[0].pos_start
-    else:
-      self.pos_start = self.body_node.pos_start
-
-    self.pos_end = self.body_node.pos_end
-
-class ClassDefNode:
-  def __init__(self, name, methods):
-    self.name = name
-    self.methods = methods
-
-  def __repr__(self):
-    return f'<Class {self.name}: {self.methods}>'
-
 class CallNode:
   def __init__(self, node_to_call, arg_nodes):
     self.node_to_call = node_to_call
@@ -966,7 +940,7 @@ class StructNode:
 @dataclass
 class ClassNode:
     name: str
-    fields: dict[str, Any]
+    fields: list[str]
     pos_start: Position
     pos_end: Position
 
@@ -1463,6 +1437,7 @@ class Parser:
     if res.error: return res
 
     node = noun
+    #print(noun)
     while self.current_tok.type == TokenType.DOT:
       self.advance(res)
 
@@ -1481,8 +1456,12 @@ class Parser:
       value = res.register(self.expr())
       if res.error: return res
 
+      print(node.noun)
+      print(node.verb)
+      print(value)
+
       node = DotSetNode(node.noun, node.verb, value, node.pos_start, self.current_tok.pos_end)
-    
+
     return res.success(node)
 
   def atom(self):
@@ -2105,6 +2084,7 @@ class Parser:
         res = ParseResult()
         global class_name
         global temp_func_name
+        global classes
 
         if self.current_tok.type != TokenType.IDENTIFIER:
             return res.failure(InvalidSyntaxError(
@@ -2113,50 +2093,25 @@ class Parser:
             ))
 
         pos_start = self.current_tok.pos_start
-        name = self.current_tok.value
-        class_name.append(name)
+        clas_name = self.current_tok.value
+        class_name.append(clas_name)
         self.advance(res)
 
-        #fields = []
-        #while self.current_tok.type not in [TokenType.KEYWORD, TokenType.IDENTIFIER]:
-        #    fields.append(res.register(self.func_def()))
-        #    self.advance(res)
-        #    while self.current_tok.type == TokenType.NEWLINE:
-        #        self.advance(res)
-
-        statements = []
-        pos_start = self.current_tok.pos_start.copy()
-
-        while self.current_tok.type == TokenType.NEWLINE:
+        if self.current_tok.type == TokenType.NEWLINE:
           self.advance(res)
 
-        statement = res.register(self.statement())
-        if res.error: return res
-        statements.append(statement)
+          statements = res.register(self.statements())
+          if res.error: return res
 
-        more_statements = True
-
-        while True:
-          newline_count = 0
-          while self.current_tok.type == TokenType.NEWLINE:
+          if self.current_tok.matches(TokenType.KEYWORD, 'end'):
             self.advance(res)
-            newline_count += 1
-          if newline_count == 0:
-            more_statements = False
-      
-          if not more_statements: break
-          statement = res.try_register(self.statement())
-          if not statement:
-            self.reverse(res.to_reverse_count)
-            more_statements = False
-            continue
-          statements.append(statement)
-
-        if not self.current_tok.matches(TokenType.KEYWORD, 'end'):
+          else:
             return res.failure(InvalidSyntaxError(
-                self.current_tok.pos_start, self.current_tok.pos_end,
-                "Expected 'end' or identifier"
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              "Expected 'end'"
             ))
+        
+        print(statements.element_nodes)
 
         pos_end = self.current_tok.pos_end
         self.advance(res)
@@ -2172,7 +2127,18 @@ class Parser:
         except:
           pass
 
-        return res.success(ClassNode(name=name, fields=fields, pos_start=pos_start, pos_end=pos_end))
+        classes[class_name[0]] = {}
+
+        for field in fields:
+          classes[class_name[0]][field] = fields[field]
+
+        names = []
+
+        for clas in classes:
+          for name in classes[clas]:
+            names.append(name)
+
+        return res.success(ClassNode(name=clas_name, fields=names, pos_start=pos_start, pos_end=pos_end))
 
   def do_expr(self):
     res = ParseResult()
@@ -3483,6 +3449,8 @@ class StructInstance(Value):
 
     def get_dot(self, verb):
         if verb in self.fields:
+            #print(verb)
+            #print(self.fields)
             return self.fields[verb].copy(), None
         else:
             return None, RTError(
@@ -3504,28 +3472,38 @@ class StructInstance(Value):
         return StructInstance(self.struct_name, self.fields).set_pos(self.pos_start, self.pos_end).set_context(self.context)
 
 class ClassInstance(Value):
-    def __init__(self, struct_name, fields):
+    def __init__(self, class_name, fields):
         super().__init__()
-        self.struct_name = struct_name
+        self.class_name = class_name
         self.fields = fields
 
     def __repr__(self):
-        result = f"{self.struct_name} {{"
+        result = f"{self.class_name} {{"
         for key, value in self.fields.items():
             result += f"{key}: {value!r}, "
         return result[:-2] + "}"
 
     def get_dot(self, verb):
         if verb in self.fields:
-            return self.fields[verb].copy(), None
+            return self.fields[verb], None
         else:
             return None, RTError(
                 self.pos_start, self.pos_end,
-                f"Could not find property {verb!r} in class {self.struct_name!r}",
+                f"Could not find property {verb!r} in class {self.class_name!r}",
+                self.context)
+    
+    def set_dot(self, verb, obj):
+        if verb in self.fields:
+            self.fields[verb] = obj
+            return Number.null, None
+        else:
+            return None, RTError(
+                self.pos_start, self.pos_end,
+                f"Could not find property {verb!r} in struct {self.struct_name!r}",
                 self.context)
 
     def copy(self):
-        return ClassInstance(self.struct_name, self.fields).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+        return ClassInstance(self.class_name, self.fields).set_pos(self.pos_start, self.pos_end).set_context(self.context)
 
 #######################################
 # CONTEXT
@@ -3856,6 +3834,8 @@ class Interpreter:
     if res.should_return(): return res
     value_to_call = value_to_call.copy().set_pos(node.pos_start, node.pos_end)
 
+    print(node.arg_nodes)
+
     for arg_node in node.arg_nodes:
       args.append(res.register(self.visit(arg_node, context)))
       if res.should_return(): return res
@@ -4050,12 +4030,12 @@ class Interpreter:
 
   def visit_DotGetNode(self, node, context):
     res = RTResult()
+    #print(res.register(self.visit(node.noun, context)))
     noun = res.register(self.visit(node.noun, context))
     if res.should_return(): return res
 
     verb = node.verb.value
-    print(f'noun: {noun}')
-    print(f'verb: {verb}')
+    #print(noun.get_dot(verb))
 
     result, error = noun.get_dot(verb)
     if error: return res.failure(error)
@@ -4083,26 +4063,25 @@ class Interpreter:
   
   def visit_ClassNode(self, node, ctx):
     # TODO: report class redefinition 
-    print(f"node.fields before assignment: {node.fields}") 
     ctx.symbol_table.classes[node.name] = node.fields 
-    print(f"ctx.symbol_table.classes after assignment: {ctx.symbol_table.classes}") 
     return RTResult().success(Number.null)
   
   def visit_StructCreationNode(self, node, ctx):
         res = RTResult()
         struct = ctx.symbol_table.structs[node.name]
 
-        return res.success(StructInstance(node.name, {field: Number.null for field in struct})
-                           .set_pos(node.pos_start, node.pos_end)
-                           .set_context(ctx))
+        return res.success(StructInstance(node.name, {field: Number.null for field in struct}).set_pos(node.pos_start, node.pos_end).set_context(ctx))
   
   def visit_ClassCreationNode(self, node, ctx):
         res = RTResult()
-        struct = ctx.symbol_table.classes[node.name]
+        fields = {}
+        global classes
 
-        return res.success(ClassInstance(node.name, {field: Number.null for field in struct})
-                           .set_pos(node.pos_start, node.pos_end)
-                           .set_context(ctx))
+        clases = ctx.symbol_table.classes[node.name]
+        for clss in clases:
+          fields[clss] = classes[node.name][clss]
+
+        return res.success(ClassInstance(node.name, fields).set_pos(node.pos_start, node.pos_end).set_context(ctx))
 
 #######################################
 # CREATE FAKE POS

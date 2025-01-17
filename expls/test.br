@@ -1,9 +1,17 @@
-class test
+class tests
     function add(x, y)
+        println("x: " + Str(x) + " y: " + Str(y))
         return x + y  # Corrigido para usar x e y
     end
 end
 
-a = test()
+struct test
+    add
+end
 
-println(a.add(5, 6))  # Chamada correta da função
+a = tests()
+#a.add = function (x, y)
+#    return x + y
+#end
+
+print(a.add)
