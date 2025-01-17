@@ -1437,7 +1437,6 @@ class Parser:
     if res.error: return res
 
     node = noun
-    #print(noun)
     while self.current_tok.type == TokenType.DOT:
       self.advance(res)
 
@@ -1455,10 +1454,6 @@ class Parser:
 
       value = res.register(self.expr())
       if res.error: return res
-
-      print(node.noun)
-      print(node.verb)
-      print(value)
 
       node = DotSetNode(node.noun, node.verb, value, node.pos_start, self.current_tok.pos_end)
 
@@ -2110,8 +2105,6 @@ class Parser:
               self.current_tok.pos_start, self.current_tok.pos_end,
               "Expected 'end'"
             ))
-        
-        print(statements.element_nodes)
 
         pos_end = self.current_tok.pos_end
         self.advance(res)
@@ -2120,8 +2113,8 @@ class Parser:
 
         try:
           for i in range(len(temp_func_name)):
-            if temp_func_name[i] == statements[i].var_name_tok.value:
-              fields[temp_func_name[i]] = statements[i]
+            if temp_func_name[i] == statements.element_nodes[i].var_name_tok.value:
+              fields[temp_func_name[i]] = statements.element_nodes[i]
             else:
               pass
         except:
@@ -3564,7 +3557,12 @@ class SymbolTable:
 #######################################
 
 class Interpreter:
+  def __init__(self):
+    self.context = None
+
   def visit(self, node, context):
+    self.context = context
+
     method_name = f'visit_{type(node).__name__}'
     method = getattr(self, method_name, self.no_visit_method)
     return method(node, context)
@@ -3834,8 +3832,6 @@ class Interpreter:
     if res.should_return(): return res
     value_to_call = value_to_call.copy().set_pos(node.pos_start, node.pos_end)
 
-    print(node.arg_nodes)
-
     for arg_node in node.arg_nodes:
       args.append(res.register(self.visit(arg_node, context)))
       if res.should_return(): return res
@@ -4030,12 +4026,10 @@ class Interpreter:
 
   def visit_DotGetNode(self, node, context):
     res = RTResult()
-    #print(res.register(self.visit(node.noun, context)))
     noun = res.register(self.visit(node.noun, context))
     if res.should_return(): return res
 
     verb = node.verb.value
-    #print(noun.get_dot(verb))
 
     result, error = noun.get_dot(verb)
     if error: return res.failure(error)
@@ -4079,7 +4073,7 @@ class Interpreter:
 
         clases = ctx.symbol_table.classes[node.name]
         for clss in clases:
-          fields[clss] = classes[node.name][clss]
+          fields[clss] = self.visit(classes[node.name][clss], self.context).value
 
         return res.success(ClassInstance(node.name, fields).set_pos(node.pos_start, node.pos_end).set_context(ctx))
 
