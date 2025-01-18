@@ -1,60 +1,45 @@
-function cu(a)
-    println(a)
-end
-
-class miniCalc
-    base = 10
-    baze = 5
-
-    function add(x, y)
-        return x + y
-    end
-
-    function sub(x, y)
-        return x - y
-    end
-
-    function mul(x, y)
-        return x * y
-    end
-
-    function div(x, y)
-        return x / y
-    end
-end
-
 class realCalc
-    global x = null
-    global y = null
+    global xe = 0
+    global ye = 0
 
-    function construct(xe, ye)
-        global x = xe
-        global y = ye
+    x = 0
+    y = 0
+
+    function construct(xee, yee, clas)
+        global xe = xee
+        global ye = yee
+
+        clas.x = xee
+        clas.y = yee
     end
 
     function add()
-        return x + y
+        return xe + ye
     end
 
     function sub()
-        return x - y
+        return xe - ye
     end
 
     function mul()
-        return x * y
+        return xe * ye
     end
 
     function div()
-        return x / y
+        return xe / ye
+    end
+
+    function pow()
+        return xe ^ ye
+    end
+
+    function rest()
+        return xe % ye
     end
 end
 
-mnc = miniCalc()
-
-println(mnc.sub(mnc.base, mnc.baze))
-
 rc = realCalc()
 
-rc.construct(100, 2)
+rc.construct(100, 2, rc)
 
-println(rc.div())
+print(Str(rc.x) + " ÷ " + Str(rc.y) + " = " + Str(rc.div()))

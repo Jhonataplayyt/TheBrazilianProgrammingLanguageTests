@@ -4297,6 +4297,7 @@ class Interpreter:
         res = RTResult()
         fields = {}
         global classes
+        global global_variables
 
         clases = ctx.symbol_table.classes[node.name]
         for clss in clases:
