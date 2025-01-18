@@ -1486,7 +1486,7 @@ class Parser:
       self.advance(res)
       if tok.value in struct_name:
         if self.current_tok.type == TokenType.LCURLY:
-          struct_name = tok.value
+          structt_name = tok.value
           self.advance(res)
           if self.current_tok.type != TokenType.RCURLY:
               return res.failure(InvalidSyntaxError(
@@ -1494,10 +1494,10 @@ class Parser:
                 "Expected '}'"
             ))
           self.advance(res)
-          node = StructCreationNode(struct_name)
+          node = StructCreationNode(structt_name)
       elif tok.value in class_name:
         if self.current_tok.type == TokenType.LPAREN:
-          class_name = tok.value
+          clas_name = tok.value
           self.advance(res)
           if self.current_tok.type != TokenType.RPAREN:
               return res.failure(InvalidSyntaxError(
@@ -1505,7 +1505,7 @@ class Parser:
                 "Expected '}'"
             ))
           self.advance(res)
-          node = ClassCreationNode(class_name)
+          node = ClassCreationNode(clas_name)
       else:
         node = VarAccessNode(tok)
 
@@ -1921,6 +1921,159 @@ class Parser:
 
   def func_def(self):
     res = ParseResult()
+
+    if not self.current_tok.matches(TokenType.KEYWORD, 'function'):
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected 'function'"
+      ))
+
+    self.advance(res)
+
+    if self.current_tok.type == TokenType.IDENTIFIER:
+      var_name_tok = self.current_tok
+      self.advance(res)
+      if self.current_tok.type != TokenType.LPAREN:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          f"Expected '('"
+        ))
+    else:
+      var_name_tok = None
+      if self.current_tok.type != TokenType.LPAREN:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          f"Expected identifier or '('"
+        ))
+    
+    self.advance(res)
+    arg_name_toks = []
+    defaults = []
+    dynamics = []
+    hasOptionals = False
+
+    if self.current_tok.type == TokenType.IDENTIFIER:
+      pos_start = self.current_tok.pos_start.copy()
+      pos_end = self.current_tok.pos_end.copy()
+      arg_name_toks.append(self.current_tok)
+      self.advance(res)
+
+      if self.current_tok.type == TokenType.EQ:
+        self.advance(res)
+        default = res.register(self.expr())
+        if res.error: return res
+        defaults.append(default)
+        hasOptionals = True
+      elif hasOptionals:
+        return res.failure(InvalidSyntaxError(
+          pos_start, pos_end,
+          "Expected optional parameter."
+        ))
+      else:
+        defaults.append(None)
+      
+      if self.current_tok.matches(TokenType.KEYWORD, 'from'):
+        self.advance(res)
+        dynamics.append(res.register(self.expr()))
+        if res.error: return res
+      else:
+        dynamics.append(None)
+
+      
+      while self.current_tok.type == TokenType.COMMA:
+        self.advance(res)
+
+        if self.current_tok.type != TokenType.IDENTIFIER:
+          return res.failure(InvalidSyntaxError(
+            self.current_tok.pos_start, self.current_tok.pos_end,
+            f"Expected identifier"
+          ))
+
+        pos_start = self.current_tok.pos_start.copy()
+        pos_end = self.current_tok.pos_end.copy()
+        arg_name_toks.append(self.current_tok)
+        self.advance(res)
+
+        if self.current_tok.type == TokenType.EQ:
+          self.advance(res)
+          default = res.register(self.expr())
+          if res.error: return res
+          defaults.append(default)
+          hasOptionals = True
+        elif hasOptionals:
+          return res.failure(InvalidSyntaxError(
+            pos_start, pos_end,
+            "Expected optional parameter."
+          ))
+        else:
+          defaults.append(None)
+        
+        if self.current_tok.matches(TokenType.KEYWORD, 'from'):
+          self.advance(res)
+          dynamics.append(res.register(self.expr()))
+          if res.error: return res
+        else:
+          dynamics.append(None)
+      
+      if self.current_tok.type != TokenType.RPAREN:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          f"Expected ',', ')' or '='"
+        ))
+    else:
+      if self.current_tok.type != TokenType.RPAREN:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          f"Expected identifier or ')'"
+        ))
+
+    self.advance(res)
+
+    if self.current_tok.type == TokenType.ARROW:
+      self.advance(res)
+
+      body = res.register(self.expr())
+      if res.error: return res
+
+      return res.success(FuncDefNode(
+        var_name_tok,
+        arg_name_toks,
+        defaults,
+        dynamics,
+        body,
+        True
+      ))
+    
+    if self.current_tok.type != TokenType.NEWLINE:
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected '->' or newline"
+      ))
+
+    self.advance(res)
+
+    body = res.register(self.statements())
+    if res.error: return res
+
+    if not self.current_tok.matches(TokenType.KEYWORD, 'end'):
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        f"Expected 'end'"
+      ))
+
+    self.advance(res)
+    
+    return res.success(FuncDefNode(
+      var_name_tok,
+      arg_name_toks,
+      defaults,
+      dynamics,
+      body,
+      False
+    ))
+
+  def method_def(self):
+    res = ParseResult()
     global temp_func_name
 
     if not self.current_tok.matches(TokenType.KEYWORD, 'function'):
@@ -2075,6 +2228,56 @@ class Parser:
       False
     ))
   
+  def class_statement(self):
+    res = ParseResult()
+    res = ParseResult()
+    pos_start = self.current_tok.pos_start.copy()
+
+    if self.current_tok.matches(TokenType.KEYWORD, 'return'):
+      self.advance(res)
+
+      expr = res.try_register(self.expr())
+      if not expr:
+        self.reverse(res.to_reverse_count)
+      return res.success(ReturnNode(expr, pos_start, self.current_tok.pos_start.copy()))
+    
+    if self.current_tok.matches(TokenType.KEYWORD, 'continue'):
+      self.advance(res)
+      return res.success(ContinueNode(pos_start, self.current_tok.pos_start.copy()))
+      
+    if self.current_tok.matches(TokenType.KEYWORD, 'break'):
+      self.advance(res)
+      return res.success(BreakNode(pos_start, self.current_tok.pos_start.copy()))
+    
+    if self.current_tok.matches(TokenType.KEYWORD, 'pass'):
+      self.advance(res)
+      return res.success(PassNode(pos_start, self.current_tok.pos_start.copy()))
+    
+    if self.current_tok.matches(TokenType.KEYWORD, 'function'):
+      func_def = res.register(self.method_def())
+      if res.error: return res
+      return res.success(func_def)
+    
+    if self.current_tok.matches(TokenType.KEYWORD, 'import'):
+      self.advance(res)
+
+      if not self.current_tok.type == TokenType.STRING:
+        return res.failure(InvalidSyntaxError(
+          self.current_tok.pos_start, self.current_tok.pos_end,
+          "Expected string"
+        ))
+      
+      string = res.register(self.atom())
+      return res.success(ImportNode(string, pos_start, self.current_tok.pos_start.copy()))
+  
+    expr = res.register(self.expr())
+    if res.error:
+      return res.failure(InvalidSyntaxError(
+        self.current_tok.pos_start, self.current_tok.pos_end,
+        "Expected 'switch', 'return', 'continue', 'break', 'if', 'for', 'while', 'function', 'namespace', int, float, identifier, '+', '-', '(', '[', '{' or 'not'"
+      ))
+    return res.success(expr)
+  
   def class_def(self):
         res = ParseResult()
         global class_name
@@ -2092,18 +2295,38 @@ class Parser:
         class_name.append(clas_name)
         self.advance(res)
 
-        if self.current_tok.type == TokenType.NEWLINE:
+        statements = []
+        pos_start = self.current_tok.pos_start.copy()
+
+        while self.current_tok.type == TokenType.NEWLINE:
           self.advance(res)
 
-          statements = res.register(self.statements())
-          if res.error: return res
+        statement = res.register(self.class_statement())
+        if res.error: return res
+        statements.append(statement)
 
-          if self.current_tok.matches(TokenType.KEYWORD, 'end'):
+        more_statements = True
+
+        while True:
+          newline_count = 0
+          while self.current_tok.type == TokenType.NEWLINE:
             self.advance(res)
-          else:
+            newline_count += 1
+          if newline_count == 0:
+            more_statements = False
+      
+          if not more_statements: break
+          statement = res.try_register(self.class_statement())
+          if not statement:
+            self.reverse(res.to_reverse_count)
+            more_statements = False
+            continue
+          statements.append(statement)
+
+        if not self.current_tok.matches(TokenType.KEYWORD, 'end'):
             return res.failure(InvalidSyntaxError(
-              self.current_tok.pos_start, self.current_tok.pos_end,
-              "Expected 'end'"
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                "Expected 'end' or identifier"
             ))
 
         pos_end = self.current_tok.pos_end
@@ -2111,25 +2334,29 @@ class Parser:
 
         fields = {}
 
-        try:
-          for i in range(len(temp_func_name)):
-            if temp_func_name[i] == statements.element_nodes[i].var_name_tok.value:
-              fields[temp_func_name[i]] = statements.element_nodes[i]
-            else:
-              pass
-        except:
-          pass
+        i = 0
 
-        classes[class_name[0]] = {}
+        for x in range(len(statements)):
+          try:
+            if isinstance(statements[x], FuncDefNode):
+              fields[temp_func_name[i]] = statements[x]
+              i += 1
+            else:
+              fields[statements[x].var_name_tok.value] = statements[x].value_node
+          except Exception as e:
+            print(e)
+
+        classes[clas_name] = {}
 
         for field in fields:
-          classes[class_name[0]][field] = fields[field]
+          classes[class_name[class_name.index(clas_name)]][field] = fields[field]
 
         names = []
 
-        for clas in classes:
-          for name in classes[clas]:
-            names.append(name)
+        for name in classes[clas_name]:
+          names.append(name)
+
+        temp_func_name = []
 
         return res.success(ClassNode(name=clas_name, fields=names, pos_start=pos_start, pos_end=pos_end))
 

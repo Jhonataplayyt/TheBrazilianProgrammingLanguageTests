@@ -1,4 +1,11 @@
+function cu(a)
+    println(a)
+end
+
 class miniCalc
+    base = 10
+    baze = 5
+
     function add(x, y)
         return x + y
     end
@@ -16,12 +23,38 @@ class miniCalc
     end
 end
 
+class realCalc
+    global x = null
+    global y = null
+
+    function construct(xe, ye)
+        global x = xe
+        global y = ye
+    end
+
+    function add()
+        return x + y
+    end
+
+    function sub()
+        return x - y
+    end
+
+    function mul()
+        return x * y
+    end
+
+    function div()
+        return x / y
+    end
+end
+
 mnc = miniCalc()
 
-println(mnc.add(7, 8))
+println(mnc.sub(mnc.base, mnc.baze))
 
-println(mnc.sub(6, 5))
+rc = realCalc()
 
-println(mnc.mul(3, 9))
+rc.construct(100, 2)
 
-println(mnc.div(15, 3))
+println(rc.div())
