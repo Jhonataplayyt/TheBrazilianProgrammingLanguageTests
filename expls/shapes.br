@@ -1,42 +1,19 @@
+function Square(x)
+    Rectangle(x, x)
+end
 
-namespace Shapes
-    function Square(x)
-        c = 0
-        xy = x^2
-        ai = 0
-        ax = 0
-
-        if x <= 4 and x != 1 and x != 0 then
-            ai = 2
-        else
-            ai = 0
+function Rectangle(x, y)
+    a = ""
+    
+    for i = 0 to y then
+        for j = 0 to x then
+            a = a + " *"
         end
-
-        for i = ai to xy then
-            c = c + 1
-            print(" *")
-
-            if ai <= 4 then
-                ax = int(ai)
-            end
-
-            if c == (x - ax) then
-                println(" *")
-
-                c = 0
-            end
-        end
+        
+        println(a)
+        
+        a = ""
     end
 end
 
-while true then
-    inp = int(input("Digite um número de 1 a 20: "))
-
-    if inp < 1 or inp > 20 then
-        println("Os números precisam ser entre 1 e 20: ")
-
-        continue
-    else
-        Square(inp)
-    end
-end
+Square(10)

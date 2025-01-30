@@ -1,3 +1,9 @@
-import "C:/Users/tempe/Desktop/AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/modules/os.br"
+for i = 1 to 59 then
+    wait(60)
 
-os.remove("C:/Users/tempe/Desktop/AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/expls/RMtest.bro.bro")
+    println(i)
+end
+
+wait(60)
+
+println("1 Hour")

@@ -1,3 +1,13 @@
+floatToInt = function (x)
+    var = split( Str(x), "." )
+
+    if Int(var / 1) == 0 then
+        return Int(var / 0)
+    else
+        return x
+    end
+end
+
 class realCalc
     global xe = 0
     global ye = 0
@@ -5,12 +15,12 @@ class realCalc
     x = 0
     y = 0
 
-    function construct(xee, yee, clas)
-        global xe = xee
-        global ye = yee
+    function construct(x, y, clas)
+        global xe = x
+        global ye = y
 
-        clas.x = xee
-        clas.y = yee
+        clas.x = x
+        clas.y = y
     end
 
     function add()
@@ -40,6 +50,13 @@ end
 
 rc = realCalc()
 
-rc.construct(100, 2, rc)
+rc.construct(100, 4, rc)
+println(Str(rc.x) + " + " + Str(rc.y) + " = " + Str(rc.add()))
+println(Str(rc.x) + " - " + Str(rc.y) + " = " + Str(rc.sub()))
+println(Str(rc.x) + " × " + Str(rc.y) + " = " + Str(rc.mul()))
 
-print(Str(rc.x) + " ÷ " + Str(rc.y) + " = " + Str(rc.div()))
+println(Str(rc.x) + " ÷ " + Str(rc.y) + " = " + Str(floatToInt(rc.div())))
+
+println(Str(rc.x) + " ^ " + Str(rc.y) + " = " + Str(rc.pow()))
+
+println(Str(rc.x) + " mod " + Str(rc.y) + " = " + Str(rc.rest()))

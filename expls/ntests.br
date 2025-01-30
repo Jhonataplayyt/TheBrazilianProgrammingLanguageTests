@@ -1,0 +1,32 @@
+function detectar_tecla()
+    println("Pressione uma tecla (ESC para sair)")
+
+    ch2 = null
+    ch = null
+
+    while true then
+        ch = input_key("")
+
+        if ch == ~\xe0~ then
+            ch2 = input_key("")
+
+            if ch2 == "H" then
+                println("Seta para cima")
+            elif ch2 == "P" then
+                println("Seta para baixo")
+            elif ch2 == "K" then
+                println("Seta para a esquerda")
+            elif ch2 == "M" then
+                println("Seta para a direita")
+            else
+                print("Tecla diferente: ")
+                println(ch2)
+            end
+        else
+            println("Saindo..")
+            break
+        end
+    end
+end
+
+detectar_tecla()

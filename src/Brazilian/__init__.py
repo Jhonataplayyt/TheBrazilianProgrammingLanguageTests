@@ -8,10 +8,13 @@ import math
 import time
 import sys
 import string
+import struct
 from enum import Enum, auto
 from dataclasses import dataclass
 import pickle
+import psutil
 from typing import *
+import Brazilian.Libs.basBR as basBR
 
 #######################################
 # StringsWithArrowsAndMore
@@ -37,7 +40,7 @@ def string_with_arrows(text, pos_start, pos_end):
         if idx_end < 0: idx_end = len(text)
             
     return result.replace('\t', '')
-    
+
 def to_bytes(value):
     if isinstance(value, bytes):
         return value
@@ -46,7 +49,6 @@ def to_bytes(value):
     elif isinstance(value, int):
         return value.to_bytes((value.bit_length() + 7) // 8 or 1, byteorder='big', signed=True)
     elif isinstance(value, float):
-        import struct
         return struct.pack('>d', value)
     elif isinstance(value, bool):
         return b'\x01' if value else b'\x00'
@@ -66,7 +68,7 @@ def to_bytes_forL(value):
     return to_bytes(int(val))
   else:
     return to_bytes(val)
-  
+
 def convert_forL(value):
   val = str(value)
 
@@ -76,6 +78,12 @@ def convert_forL(value):
     return int(val)
   else:
     return val
+
+def lineTry(Try: Any, Except: any, exception:Any = None):
+  try:
+    return Try
+  except (exception if Exception == None else Exception) as e:
+    return Except
 
 #######################################
 # OPEN FILES (so they don't get automatically closed by GC)
@@ -136,6 +144,9 @@ class Value:
 
   def powed_by(self, other):
     return None, self.illegal_operation(other)
+  
+  def percent_by(self, other):
+    return None, self.illegal_operation(other)
 
   def get_comparison_eq(self, other):
     return None, self.illegal_operation(other)
@@ -160,9 +171,27 @@ class Value:
 
   def ored_by(self, other):
     return None, self.illegal_operation(other)
+  
+  def xored(self, other):
+    return None, self.illegal_operation(other)
+  
+  def left_shiffed(self, other):
+    return None, self.illegal_operation(other)
+  
+  def right_shiffed(self, other):
+    return None, self.illegal_operation(other)
+  
+  def bitwise_and(self, other):
+    return None, self.illegal_operation(other)
+  
+  def bitwise_or(self, other):
+    return None, self.illegal_operation(other)
+  
+  def bitwise_not(self, other):
+    return None, self.illegal_operation(other)
 
-  def notted(self):
-    return None, self.illegal_operation()
+  def notted(self, other):
+    return None, self.illegal_operation(other)
   
   def iter(self):
     return Iterator(self.gen)
@@ -338,6 +367,12 @@ class TokenType(Enum):
   GT				 = auto()
   LTE				 = auto()
   GTE				 = auto()
+  BITWISEXOR = auto()
+  BITWISEOR  = auto()
+  BITWISEAND = auto()
+  BITWISENOT = auto()
+  LEFTSH     = auto()
+  RIGHTSH    = auto()
   COMMA			 = auto()
   ARROW			 = auto()
   LCURLY     = auto()
@@ -394,11 +429,13 @@ class Token:
     if pos_end:
       self.pos_end = pos_end.copy()
 
+  
   def copy(self):
     return Token(self.type, self.value, self.pos_start.copy(), self.pos_end.copy())
 
   def matches(self, type_, value):
     return self.type == type_ and self.value == value
+
   
   def __repr__(self):
     if self.value: return f'{self.type.name}:{self.value}'
@@ -440,6 +477,7 @@ TYPES = [
   "list", 
   "dict",
   "func",
+  "bool",
 ]
 
 class Lexer:
@@ -449,7 +487,7 @@ class Lexer:
     self.pos = Position(-1, 0, -1, fn, text)
     self.current_char = None
     self.advance()
-  
+
   def advance(self):
     self.pos.advance(self.current_char)
     self.current_char = self.text[self.pos.idx] if self.pos.idx < len(self.text) else None
@@ -490,6 +528,12 @@ class Lexer:
         tokens.append(self.make_less_than())
       elif self.current_char == '>':
         tokens.append(self.make_greater_than())
+      elif self.current_char == '|':
+        tokens.append(self.make_bitwise_or())
+      elif self.current_char == '&':
+        tokens.append(self.make_bitwise_and())
+      elif self.current_char == '°':
+        tokens.append(self.make_bitwise_xor())
       else:
         pos_start = self.pos.copy()
         char = self.current_char
@@ -532,7 +576,7 @@ class Lexer:
     
     self.advance()
     return Token(TokenType.STRING, string.encode('raw_unicode_escape').decode('unicode_escape'), pos_start, self.pos)
-  
+
   def make_bytes(self):
     bytes = ''
     pos_start = self.pos.copy()
@@ -578,7 +622,7 @@ class Lexer:
 
     self.advance()
     return None, ExpectedCharError(pos_start, self.pos, "'=' (after '!')")
-  
+
   def make_equals(self):
     tok_type = TokenType.EQ
     pos_start = self.pos.copy()
@@ -598,6 +642,9 @@ class Lexer:
     if self.current_char == '=':
       self.advance()
       tok_type = TokenType.LTE
+    elif self.current_char == '<':
+      self.advance()
+      tok_type = TokenType.LEFTSH
 
     return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
 
@@ -609,6 +656,33 @@ class Lexer:
     if self.current_char == '=':
       self.advance()
       tok_type = TokenType.GTE
+    if self.current_char == '>':
+      self.advance()
+      tok_type = TokenType.RIGHTSH
+
+    return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
+  def make_bitwise_xor(self):
+    tok_type = TokenType.BITWISEXOR
+    pos_start = self.pos.copy()
+    self.advance()
+
+    if self.current_char == '°':
+      tok_type = TokenType.BITWISENOT
+
+    return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+  
+  def make_bitwise_or(self):
+    tok_type = TokenType.BITWISEOR
+    pos_start = self.pos.copy()
+    self.advance()
+
+    return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
+  def make_bitwise_and(self):
+    tok_type = TokenType.BITWISEAND
+    pos_start = self.pos.copy()
+    self.advance()
 
     return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
 
@@ -982,22 +1056,26 @@ class ParseResult:
     self.last_registered_advance_count = 1
     self.advance_count += 1
 
+  
   def register(self, res):
     self.last_registered_advance_count = res.advance_count
     self.advance_count += res.advance_count
     if res.error: self.error = res.error
     return res.node
 
+  
   def try_register(self, res):
     if res.error:
       self.to_reverse_count = res.advance_count
       return None
     return self.register(res)
 
+  
   def success(self, node):
     self.node = node
     return self
 
+  
   def failure(self, error):
     if not self.error or self.last_registered_advance_count == 0:
       self.error = error
@@ -1020,6 +1098,7 @@ class Parser:
     res.register_advancement()
     return self.current_tok
 
+  
   def reverse(self, amount=1):
     self.tok_idx -= amount
     self.update_current_tok()
@@ -1246,7 +1325,7 @@ class Parser:
         if res.error: return res
 
         if Type == "int":
-          if (isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode)) and isinstance(is_type, int):
+          if ((isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, int)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1254,7 +1333,7 @@ class Parser:
               f"The variable cant's be int"
             ))
         elif Type == "float":
-          if (isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode)) and isinstance(is_type, float):
+          if ((isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, float)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1262,7 +1341,7 @@ class Parser:
               f"The variable cant's be int"
             ))
         elif Type == "string":
-          if (isinstance(assign_expr, StringNode) or isinstance(assign_expr, CallNode)) and isinstance(is_type, string):
+          if (((isinstance(assign_expr, StringNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, str))) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1270,7 +1349,7 @@ class Parser:
               f"The variable cant's be string"
             ))
         elif Type == "list":
-          if (isinstance(assign_expr, ListNode) or isinstance(assign_expr, CallNode)) and is_type == None:
+          if ((isinstance(assign_expr, ListNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, list)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1278,15 +1357,23 @@ class Parser:
               f"The variable cant's be list"
             ))
         elif Type == "dict":
-          if (isinstance(assign_expr, DictNode) or isinstance(assign_expr, CallNode)) and isinstance(is_type, dict):
+          if ((isinstance(assign_expr, DictNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, dict)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
               f"The variable cant's be dictionary"
             ))
+        elif Type == "bool":
+          if (isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null', 'true', 'false'] else False):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be boolean"
+            ))
         elif Type == "bin":
-          if (isinstance(assign_expr, BinNode) or isinstance(assign_expr, CallNode)):
+          if (isinstance(assign_expr, BinNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1294,7 +1381,7 @@ class Parser:
               f"The variable cant's be binary"
             ))
         elif Type == "bytes":
-          if (isinstance(assign_expr, ByteNode) or isinstance(assign_expr, CallNode)):
+          if (isinstance(assign_expr, ByteNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1302,7 +1389,7 @@ class Parser:
               f"The variable cant's be bytes"
             ))
         elif Type == "func":
-          if (isinstance(assign_expr, FuncDefNode) or isinstance(assign_expr, CallNode)):
+          if (isinstance(assign_expr, FuncDefNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1337,8 +1424,15 @@ class Parser:
       node = res.register(self.comp_expr())
       if res.error: return res
       return res.success(UnaryOpNode(op_tok, node))
+    elif self.current_tok.type == TokenType.BITWISENOT:
+      op_tok = self.current_tok
+      self.advance(res)
+
+      node = res.register(self.comp_expr())
+      if res.error: return res
+      return res.success(UnaryOpNode(op_tok, node))
     
-    node = res.register(self.bin_op(self.arith_expr, (TokenType.EE, TokenType.NE, TokenType.LT, TokenType.GT, TokenType.LTE, TokenType.GTE)))
+    node = res.register(self.bin_op(self.bit_expr, (TokenType.EE, TokenType.NE, TokenType.LT, TokenType.GT, TokenType.LTE, TokenType.GTE)))
     
     if res.error:
       return res.failure(InvalidSyntaxError(
@@ -1347,6 +1441,9 @@ class Parser:
       ))
 
     return res.success(node)
+
+  def bit_expr(self):
+    return self.bin_op(self.arith_expr, (TokenType.BITWISEXOR, TokenType.LEFTSH, TokenType.RIGHTSH, TokenType.BITWISEAND, TokenType.BITWISEOR))
 
   def arith_expr(self):
     return self.bin_op(self.term, (TokenType.PLUS, TokenType.MINUS))
@@ -1612,7 +1709,7 @@ class Parser:
       pos_start,
       self.current_tok.pos_end.copy()
     ))
-  
+
   def dict_expr(self):
     res = ParseResult()
     pairs = []
@@ -1687,7 +1784,7 @@ class Parser:
 
   def if_expr_b(self):
     return self.if_expr_cases('elif')
-    
+
   def if_expr_c(self):
     res = ParseResult()
     else_case = None
@@ -2227,7 +2324,7 @@ class Parser:
       body,
       False
     ))
-  
+
   def class_statement(self):
     res = ParseResult()
     res = ParseResult()
@@ -2277,7 +2374,7 @@ class Parser:
         "Expected 'switch', 'return', 'continue', 'break', 'if', 'for', 'while', 'function', 'namespace', int, float, identifier, '+', '-', '(', '[', '{' or 'not'"
       ))
     return res.success(expr)
-  
+
   def class_def(self):
         res = ParseResult()
         global class_name
@@ -2487,7 +2584,7 @@ class Parser:
 
     node = SwitchNode(condition, cases, else_case, pos_start, pos_end)
     return res.success(node)
-  
+
   def struct_def(self):
         res = ParseResult()
         global struct_name
@@ -2543,6 +2640,7 @@ class Parser:
 
   ###################################
 
+  
   def bin_op(self, func_a, ops, func_b=None):
     if func_b == None:
       func_b = func_a
@@ -2576,6 +2674,7 @@ class RTResult:
     self.loop_should_break = False
     self.loop_should_pass = False
 
+  
   def register(self, res):
     self.error = res.error
     self.func_return_value = res.func_return_value
@@ -2584,16 +2683,18 @@ class RTResult:
     self.loop_should_pass = res.loop_should_pass
     return res.value
 
+  
   def success(self, value):
     self.reset()
     self.value = value
     return self
 
+  
   def success_return(self, value):
     self.reset()
     self.func_return_value = value
     return self
-  
+
   def success_continue(self):
     self.reset()
     self.loop_should_continue = True
@@ -2603,12 +2704,13 @@ class RTResult:
     self.reset()
     self.loop_should_break = True
     return self
-  
+
   def success_pass(self):
     self.reset()
     self.loop_should_pass = True
     return self
 
+  
   def failure(self, error):
     self.reset()
     self.error = error
@@ -2632,24 +2734,28 @@ class Number(Value):
     super().__init__()
     self.value = value
 
+  
   def added_to(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value + other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def subbed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value - other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def multed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value * other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def dived_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       if other.value == 0:
@@ -2663,60 +2769,108 @@ class Number(Value):
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def powed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value ** other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def percent_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value % other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_eq(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value == other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_ne(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value != other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_lt(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value < other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_gt(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value > other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_lte(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value <= other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_gte(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value >= other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
+  def xored(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Number(self.value ^ other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def left_shifted(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Number(self.value << other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def right_shifted(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Number(self.value >> other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_and(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Number(self.value & other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_or(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Number(self.value | other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  def bitwise_not(self):
+    return Number(~self.value).set_context(self.context), None
+
+  
   def anded_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value and other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def ored_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
       return Number(self.value or other.value).set_context(self.context), None
@@ -2737,13 +2891,55 @@ class Number(Value):
 
   def __str__(self):
     return str(self.value)
-  
+
   def __repr__(self):
     return str(self.value)
 
-Number.null = Number(0)
-Number.false = Number(0)
-Number.true = Number(1)
+class Null(Value):
+  def __init__(self, value):
+    super().__init__()
+    self.value = value
+  
+  def __repr__(self):
+    return 'null'
+  
+  def copy(self):
+    copy = self.value
+    copy.set_pos(self.pos_start, self.pos_end)
+    copy.set_context(self.context)
+    return copy
+
+class false(Value):
+  def __init__(self, value):
+    super().__init__()
+    self.value = value
+  
+  def __repr__(self):
+    return 'false'
+  
+  def copy(self):
+    copy = self.value
+    copy.set_pos(self.pos_start, self.pos_end)
+    copy.set_context(self.context)
+    return copy
+  
+class true(Value):
+  def __init__(self, value):
+    super().__init__()
+    self.value = value
+  
+  def __repr__(self):
+    return 'true'
+  
+  def copy(self):
+    copy = self.value
+    copy.set_pos(self.pos_start, self.pos_end)
+    copy.set_context(self.context)
+    return copy
+
+Number.null = Null(Number(0))
+Number.false = false(Number(0))
+Number.true = true(Number(1))
 Number.math_PI = Number(math.pi)
 
 class Bin(Value):
@@ -2751,24 +2947,28 @@ class Bin(Value):
     super().__init__()
     self.value = value
 
+  
   def added_to(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bin(self.value + other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def subbed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bin(self.value - other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def multed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bin(self.value * other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def dived_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       if other.value == 0:
@@ -2782,63 +2982,111 @@ class Bin(Value):
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def powed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bin(self.value ** other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def percent_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bin(self.value % other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_eq(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value == other.value)).set_context(self.context), None
+      return Bin(self.value == other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_ne(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value != other.value)).set_context(self.context), None
+      return Bin(self.value != other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_lt(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value < other.value)).set_context(self.context), None
+      return Bin(self.value < other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_gt(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value > other.value)).set_context(self.context), None
+      return Bin(self.value > other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_lte(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value <= other.value)).set_context(self.context), None
+      return Bin(self.value <= other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_gte(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value >= other.value)).set_context(self.context), None
+      return Bin(self.value >= other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
+  def xored(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bin(self.value ^ other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def left_shiffed(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bin(self.value << other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def right_shiffed(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bin(self.value >> other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_and(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bin(self.value & other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_or(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bin(self.value | other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  def bitwise_not(self):
+    return Bin(~self.value).set_context(self.context), None
+
+  
   def anded_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value and other.value)).set_context(self.context), None
+      return Bin(self.value and other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def ored_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
-      return Bin(bin(self.value or other.value)).set_context(self.context), None
+      return Bin(self.value or other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
@@ -2865,24 +3113,28 @@ class Bytes(Value):
     super().__init__()
     self.value = value
 
+  
   def added_to(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bytes(self.value + other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def subbed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bytes(self.value - other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def multed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bytes(self.value * other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def dived_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       if other.value == 0:
@@ -2896,60 +3148,108 @@ class Bytes(Value):
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def powed_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bytes(self.value ** other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def percent_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes):
       return Bytes(self.value % other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_eq(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value == other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_ne(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value != other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_lt(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value < other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_gt(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value > other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_lte(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value <= other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def get_comparison_gte(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value >= other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
+  def xored(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bytes(to_bytes(self.value ^ other.value)).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def left_shiffed(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bytes(to_bytes(self.value << other.value)).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def right_shiffed(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bytes(to_bytes(self.value >> other.value)).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_and(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bytes(self.value & other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_or(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return Bytes(self.value | other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  def bitwise_not(self):
+    return Bytes(~self.value).set_context(self.context), None
+
+  
   def anded_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value and other.value)).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def ored_by(self, other):
     if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String):
       return Bytes(to_bytes(self.value or other.value)).set_context(self.context), None
@@ -2979,28 +3279,33 @@ class String(Value):
     super().__init__()
     self.value = value
 
+  
   def added_to(self, other):
     if isinstance(other, String):
       return String(self.value + other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def multed_by(self, other):
     if isinstance(other, Number):
       return String(self.value * other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def percent_by(self, other):
     if isinstance(other, Number):
       return String(self.value % other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def gen(self):
     for char in self.value:
       yield RTResult().success(String(char))
 
+  
   def get_index(self, index):
     if not isinstance(index, Number):
       return None, self.illegal_operation(index)
@@ -3012,16 +3317,56 @@ class String(Value):
         f"Cannot retrieve character {index} from string {self!r} because it is out of bounds.",
         self.context
       )
+
   
   def get_comparison_eq(self, other):
-    if not isinstance(other, String):
+    if not (isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction)):
       return None, self.illegal_operation(other)
     return Number(int(self.value == other.value)), None
+
   
   def get_comparison_ne(self, other):
-    if not isinstance(other, String):
+    if not (isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction)):
       return None, self.illegal_operation(other)
     return Number(int(self.value != other.value)), None
+
+  
+  def xored(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return String(self.value ^ other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def left_shiffed(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return String(self.value << other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def right_shiffed(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return String(self.value >> other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_and(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return String(self.value & other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  
+  def bitwise_or(self, other):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+      return String(self.value | other.value).set_context(self.context), None
+    else:
+      return None, Value.illegal_operation(self, other)
+
+  def bitwise_not(self):
+    return String(~self.value).set_context(self.context), None
 
   def is_true(self):
     return len(self.value) > 0
@@ -3044,11 +3389,13 @@ class List(Value):
     self.elements = elements
     self.value = elements
 
+  
   def added_to(self, other):
     new_list = self.copy()
     new_list.elements.append(other)
     return new_list, None
 
+  
   def subbed_by(self, other):
     if isinstance(other, Number):
       new_list = self.copy()
@@ -3064,6 +3411,7 @@ class List(Value):
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def multed_by(self, other):
     if isinstance(other, List):
       new_list = self.copy()
@@ -3072,6 +3420,7 @@ class List(Value):
     else:
       return None, Value.illegal_operation(self, other)
 
+  
   def dived_by(self, other):
     if isinstance(other, Number):
       try:
@@ -3084,11 +3433,12 @@ class List(Value):
         )
     else:
       return None, Value.illegal_operation(self, other)
-  
+
   def gen(self):
     for elt in self.elements:
       yield RTResult().success(elt)
 
+  
   def get_index(self, index):
     if not isinstance(index, Number):
       return None, self.illegal_operation(index)
@@ -3100,6 +3450,7 @@ class List(Value):
         f"Cannot retrieve element {index} from list {self!r} because it is out of bounds.",
         self.context
       )
+
   
   def set_index(self, index, value):
     if not isinstance(index, Number):
@@ -3193,6 +3544,7 @@ class Function(BaseFunction):
     self.dynamics = dynamics
     self.should_auto_return = should_auto_return
 
+  
   def execute(self, args):
     res = RTResult()
     interpreter = Interpreter()
@@ -3220,6 +3572,7 @@ class BuiltInFunction(BaseFunction):
   def __init__(self, name):
     super().__init__(name)
 
+  
   def execute(self, args):
     res = RTResult()
     exec_ctx = self.generate_new_context()
@@ -3233,7 +3586,7 @@ class BuiltInFunction(BaseFunction):
     return_value = res.register(method(exec_ctx))
     if res.should_return(): return res
     return res.success(return_value)
-  
+
   def no_execute_method(self, node, context):
     raise Exception(f'No execute_{self.name} method defined')
 
@@ -3264,15 +3617,56 @@ class BuiltInFunction(BaseFunction):
 
   #####################################
 
+  
   @args(['value'])
   def execute_print(self, exec_ctx):
     print(str(exec_ctx.symbol_table.get('value')), end="")
     return RTResult().success(Number.null)
+
+  
+  @args(['R', 'G', "B"])
+  def execute_backgroundColor(self, exec_ctx):
+    R = int(str(exec_ctx.symbol_table.get('R')))
+    G = int(str(exec_ctx.symbol_table.get('G')))
+    B = int(str(exec_ctx.symbol_table.get('B')))
+
+    print(f'\033[38;2;{R};{G};{B}m', end="")
+
+    return RTResult().success(Number.null)
+
+  
+  @args(['R', 'G', "B"])
+  def execute_foregroundColor(self, exec_ctx):
+    R = int(str(exec_ctx.symbol_table.get('R')))
+    G = int(str(exec_ctx.symbol_table.get('G')))
+    B = int(str(exec_ctx.symbol_table.get('B')))
+
+    print(f'\033[48;2;{R};{G};{B}m', end="")
+
+    return RTResult().success(Number.null)
+
+  
+  @args([])
+  def execute_resetColor(self, exec_ctx):
+    print(f'\033[0m', end="")
+
+    return RTResult().success(Number.null)
+
   
   @args(['value'])
   def execute_println(self, exec_ctx):
     print(str(exec_ctx.symbol_table.get('value')))
     return RTResult().success(Number.null)
+
+  
+  @args(['value'])
+  def execute_error(self, exec_ctx):
+    print(str(exec_ctx.symbol_table.get('value')))
+
+    sys.exit(1)
+
+    return RTResult().success(Number.null)
+
   
   @args(['value'])
   def execute_id(self, exec_ctx):
@@ -3295,36 +3689,42 @@ class BuiltInFunction(BaseFunction):
         exec_ctx
       ))
 
+  
   @args(['value', 'bit'], [None, Number.null])
   def execute_Int(self, exec_ctx):
-    val = str(exec_ctx.symbol_table.get('value'))
-    bit = str(exec_ctx.symbol_table.get('bit'))
+    val = exec_ctx.symbol_table.get('value')
+    bit = exec_ctx.symbol_table.get('bit')
 
-    return RTResult().success(Number(int(val, int(bit))))
+    return RTResult().success(Number(int(str(val.copy()), int(str(bit.copy()) if not isinstance(bit, (Null, true, false)) else 0))))
 
+  
   @args(['value'])
   def execute_Float(self, exec_ctx):
     val = str(exec_ctx.symbol_table.get('value'))
 
     return RTResult().success(Number(float(val)))
 
+  
   @args(['value'])
   def execute_Str(self, exec_ctx):
     val = exec_ctx.symbol_table.get('value')
 
     return RTResult().success(String(str(val)))
 
+  
   @args(['value'])
   def execute_Bin(self, exec_ctx):
     val = bin(int(str(exec_ctx.symbol_table.get('value'))))
 
     return RTResult().success(Bin(val))
 
+  
   @args(['value'])
   def execute_from_bytes_int(self, exec_ctx):
     val = convert_forL(exec_ctx.symbol_table.get('value'))
 
     return RTResult().success(Number(int.from_bytes(to_bytes(val))))
+
   
   @args(['value', 'index'])
   def execute_split(self, exec_ctx):
@@ -3344,26 +3744,34 @@ class BuiltInFunction(BaseFunction):
     for x in temp:
       c.append(String(x))
     return RTResult().success(List(c))
+
   
   @args(['value'])
   def execute_system(self, exec_ctx):
     os.system(str(exec_ctx.symbol_table.get('value')))
     return RTResult().success(Number.null)
+
   
   @args(['value'])
   def execute_print_ret(self, exec_ctx):
     return RTResult().success(String(str(exec_ctx.symbol_table.get('value'))))
+
   
   @args(['value'], [Number.null])
   def execute_input(self, exec_ctx):
     text = input("" if str(exec_ctx.symbol_table.get('value')) == '0' else str(exec_ctx.symbol_table.get('value')))
     return RTResult().success(String(text))
+
   
   @args(['value'], [Number.null])
   def execute_input_key(self, exec_ctx):
-    text = read_key("" if str(exec_ctx.symbol_table.get('value')) == '0' else str(exec_ctx.symbol_table.get('value')))
+    text = basBR.input_char("" if str(exec_ctx.symbol_table.get('value')) == '0' else str(exec_ctx.symbol_table.get('value')))
 
-    return RTResult().success(String(text))
+    if not isinstance(text, bytes):
+      return RTResult().success(String(text))
+    else:
+      return RTResult().success(Bytes(text))
+
   
   @args(['value'], [Number.null])
   def execute_input_int(self, exec_ctx):
@@ -3375,36 +3783,44 @@ class BuiltInFunction(BaseFunction):
       except ValueError:
         print(f"'{text}' must be an integer. Try again!")
     return RTResult().success(Number(number))
+
   
   @args(['value'], [Number.null])
   def execute_exit(self, exec_ctx):
     sys.exit(0 if str(exec_ctx.symbol_table.get('value')) == '0' else int(str(exec_ctx.symbol_table.get('value'))))
     return RTResult().success(Number.null)
+
   
   @args([])
   def execute_clear(self, exec_ctx):
     os.system('cls' if os.name == 'nt' else 'clear') 
+      
     return RTResult().success(Number.null)
 
+  
   @args(["value"])
   def execute_is_number(self, exec_ctx):
     is_number = isinstance(exec_ctx.symbol_table.get("value"), Number)
     return RTResult().success(Number.true if is_number else Number.false)
+
   
   @args(["value"])
   def execute_is_string(self, exec_ctx):
     is_number = isinstance(exec_ctx.symbol_table.get("value"), String)
     return RTResult().success(Number.true if is_number else Number.false)
+
   
   @args(["value"])
   def execute_is_list(self, exec_ctx):
     is_number = isinstance(exec_ctx.symbol_table.get("value"), List)
     return RTResult().success(Number.true if is_number else Number.false)
+
   
   @args(["value"])
   def execute_is_function(self, exec_ctx):
     is_number = isinstance(exec_ctx.symbol_table.get("value"), BaseFunction)
     return RTResult().success(Number.true if is_number else Number.false)
+
   
   @args(["list", "value"])
   def execute_append(self, exec_ctx):
@@ -3420,6 +3836,7 @@ class BuiltInFunction(BaseFunction):
 
     list_.elements.append(value)
     return RTResult().success(Number.null)
+
   
   @args(["list", "index"])
   def execute_pop(self, exec_ctx):
@@ -3449,6 +3866,7 @@ class BuiltInFunction(BaseFunction):
         exec_ctx
       ))
     return RTResult().success(element)
+
   
   @args(["listA", "listB"])
   def execute_extend(self, exec_ctx):
@@ -3471,6 +3889,7 @@ class BuiltInFunction(BaseFunction):
 
     listA.elements.extend(listB.elements)
     return RTResult().success(Number.null)
+
   
   @args(["value"])
   def execute_len(self, exec_ctx):
@@ -3484,6 +3903,7 @@ class BuiltInFunction(BaseFunction):
       ))
 
     return RTResult().success(Number(len(list_.elements)))
+
   
   @args(["fn"])
   def execute_run(self, exec_ctx):
@@ -3496,7 +3916,6 @@ class BuiltInFunction(BaseFunction):
         exec_ctx
       ))
 
-    print("WARNING: run() is deprecated. Use 'IMPORT' instead")
     fn = fn.value
 
     try:
@@ -3521,6 +3940,7 @@ class BuiltInFunction(BaseFunction):
 
     return RTResult().success(Number.null)
 
+  
   @args(["secs"])
   def execute_wait(self, exec_ctx):
     sym = exec_ctx.symbol_table
@@ -3541,7 +3961,11 @@ class BuiltInFunction(BaseFunction):
     return RTResult().success(Number.null)
 
 BuiltInFunction.print           = BuiltInFunction("print")
+BuiltInFunction.error           = BuiltInFunction("error")
 BuiltInFunction.println         = BuiltInFunction("println")
+BuiltInFunction.backgroundColor = BuiltInFunction("backgroundColor")
+BuiltInFunction.foregroundColor = BuiltInFunction("foregroundColor")
+BuiltInFunction.resetColor      = BuiltInFunction("resetColor")
 BuiltInFunction.print_ret       = BuiltInFunction("print_ret")
 BuiltInFunction.system          = BuiltInFunction("system")
 BuiltInFunction.id              = BuiltInFunction("id")
@@ -3600,6 +4024,7 @@ class Dict(Value):
     self.values = values
     self.value = values
 
+  
   def added_to(self, other):
     if not isinstance(other, Dict):
       return None, self.illegal_operation(other)
@@ -3609,12 +4034,14 @@ class Dict(Value):
       new_dict.values[key] = value
     
     return new_dict, None
+
   
   def gen(self):
     fake_pos = create_fake_pos("<dict key>")
     for key in self.values.keys():
       key_as_value = String(key).set_pos(fake_pos, fake_pos).set_context(self.context)
       yield RTResult().success(key_as_value)
+
   
   def get_index(self, index):
     if not isinstance(index, String):
@@ -3628,6 +4055,7 @@ class Dict(Value):
         f"Could not find key {index!r} in dict {self!r}",
         self.context
       )
+
   
   def set_index(self, index, value):
     if not isinstance(index, String):
@@ -3636,7 +4064,7 @@ class Dict(Value):
     self.values[index.value] = value
 
     return self, None
-  
+
   def __str__(self):
     result = ""
     for key, value in self.values.items():
@@ -3667,6 +4095,7 @@ class StructInstance(Value):
 
         return result[:-2] + "}"
 
+    
     def get_dot(self, verb):
         if verb in self.fields:
             #print(verb)
@@ -3678,6 +4107,7 @@ class StructInstance(Value):
                 f"Could not find property {verb!r} in struct {self.struct_name!r}",
                 self.context)
 
+    
     def set_dot(self, verb, obj):
         if verb in self.fields:
             self.fields[verb] = obj
@@ -3697,12 +4127,14 @@ class ClassInstance(Value):
         self.class_name = class_name
         self.fields = fields
 
+    
     def __repr__(self):
         result = f"{self.class_name} {{"
         for key, value in self.fields.items():
             result += f"{key}: {value!r}, "
         return result[:-2] + "}"
 
+    
     def get_dot(self, verb):
         if verb in self.fields:
             return self.fields[verb], None
@@ -3711,6 +4143,7 @@ class ClassInstance(Value):
                 self.pos_start, self.pos_end,
                 f"Could not find property {verb!r} in class {self.class_name!r}",
                 self.context)
+
     
     def set_dot(self, verb, obj):
         if verb in self.fields:
@@ -3749,11 +4182,13 @@ class SymbolTable:
     self.const = set()
     self.globall = set()
 
+  
   def get(self, name):
     value = self.symbols.get(name, None)
     if value == None and self.parent:
       return self.parent.get(name)
     return value
+
   
   def get_global(self, name):
     global global_variables
@@ -3787,6 +4222,7 @@ class Interpreter:
   def __init__(self):
     self.context = None
 
+  
   def visit(self, node, context):
     self.context = context
 
@@ -3799,25 +4235,31 @@ class Interpreter:
 
   ###################################
 
+  
   def visit_NumberNode(self, node, context):
     return RTResult().success(
       Number(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
+
   
   def visit_BinNode(self, node, context):
     return RTResult().success(
       Bin(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
+
+  
   def visit_ByteNode(self, node, context):
     return RTResult().success(
       Bytes(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
 
+  
   def visit_StringNode(self, node, context):
     return RTResult().success(
       String(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
 
+  
   def visit_ListNode(self, node, context):
     res = RTResult()
     elements = []
@@ -3830,6 +4272,7 @@ class Interpreter:
       List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
 
+  
   def visit_VarAccessNode(self, node, context):
     global global_variables
 
@@ -3852,6 +4295,7 @@ class Interpreter:
     value = value.copy().set_pos(node.pos_start, node.pos_end).set_context(context)
     return res.success(value)
 
+  
   def visit_VarAssignNode(self, node, context):
     res = RTResult()
     var_name = node.var_name_tok.value
@@ -3875,6 +4319,7 @@ class Interpreter:
         context
       ))
 
+  
   def visit_BinOpNode(self, node, context):
     res = RTResult()
     left = res.register(self.visit(node.left_node, context))
@@ -3906,6 +4351,16 @@ class Interpreter:
       result, error = left.get_comparison_lte(right)
     elif node.op_tok.type == TokenType.GTE:
       result, error = left.get_comparison_gte(right)
+    elif node.op_tok.type == TokenType.BITWISEXOR:
+      result, error = left.xored(right)
+    elif node.op_tok.type == TokenType.LEFTSH:
+      result, error = left.left_shifted(right)
+    elif node.op_tok.type == TokenType.RIGHTSH:
+      result, error = left.right_shifted(right)
+    elif node.op_tok.type == TokenType.BITWISEAND:
+      result, error = left.bitwise_and(right)
+    elif node.op_tok.type == TokenType.BITWISEOR:
+      result, error = left.bitwise_or(right)
     elif node.op_tok.matches(TokenType.KEYWORD, 'and'):
       result, error = left.anded_by(right)
     elif node.op_tok.matches(TokenType.KEYWORD, 'or'):
@@ -3916,6 +4371,7 @@ class Interpreter:
     else:
       return res.success(result.set_pos(node.pos_start, node.pos_end))
 
+  
   def visit_UnaryOpNode(self, node, context):
     res = RTResult()
     number = res.register(self.visit(node.node, context))
@@ -3927,12 +4383,15 @@ class Interpreter:
       number, error = number.multed_by(Number(-1))
     elif node.op_tok.matches(TokenType.KEYWORD, 'not'):
       number, error = number.notted()
+    elif node.op_tok.type == TokenType.BITWISENOT:
+      number, error = number.bitwise_not()
 
     if error:
       return res.failure(error)
     else:
       return res.success(number.set_pos(node.pos_start, node.pos_end))
 
+  
   def visit_IfNode(self, node, context):
     res = RTResult()
 
@@ -3953,6 +4412,7 @@ class Interpreter:
 
     return res.success(Number.null)
 
+  
   def visit_ForNode(self, node, context):
     res = RTResult()
     elements = []
@@ -3999,6 +4459,7 @@ class Interpreter:
       List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
 
+  
   def visit_WhileNode(self, node, context):
     res = RTResult()
     elements = []
@@ -4029,6 +4490,7 @@ class Interpreter:
       List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
 
+  
   def visit_FuncDefNode(self, node, context):
     res = RTResult()
 
@@ -4051,6 +4513,7 @@ class Interpreter:
 
     return res.success(func_value)
 
+  
   def visit_CallNode(self, node, context):
     res = RTResult()
     args = []
@@ -4079,14 +4542,18 @@ class Interpreter:
     
     return res.success_return(value)
 
+  
   def visit_ContinueNode(self, node, context):
     return RTResult().success_continue()
 
+  
   def visit_BreakNode(self, node, context):
     return RTResult().success_break()
+
   
   def visit_PassNode(self, node, context):
     return RTResult().success_pass()
+
   
   def visit_ImportNode(self, node, context):
     res = RTResult()
@@ -4118,6 +4585,7 @@ class Interpreter:
     if error: return res.failure(error)
 
     return res.success(Number.null)
+
   
   def visit_DoNode(self, node, context):
     res = RTResult()
@@ -4131,6 +4599,7 @@ class Interpreter:
     return_value = return_value or Number.null
 
     return res.success(return_value)
+
   
   def visit_TryNode(self, node: TryNode, context):
     res = RTResult()
@@ -4151,6 +4620,7 @@ class Interpreter:
       return res.success(Number.null)
     else:
       return res.success(Number.null)
+
   
   def visit_ForInNode(self, node, context):
     res = RTResult()
@@ -4175,6 +4645,7 @@ class Interpreter:
     if should_return_null: return res.success(Number.null)
     return res.success(elements)
 
+  
   def visit_IndexGetNode(self, node, context):
     res = RTResult()
     indexee = res.register(self.visit(node.indexee, context))
@@ -4187,6 +4658,7 @@ class Interpreter:
     if error: return res.failure(error)
     return res.success(result)
 
+  
   def visit_IndexSetNode(self, node, context):
     res = RTResult()
     indexee = res.register(self.visit(node.indexee, context))
@@ -4203,6 +4675,7 @@ class Interpreter:
 
     return res.success(result)
 
+  
   def visit_DictNode(self, node, context):
     res = RTResult()
     values = {}
@@ -4225,6 +4698,7 @@ class Interpreter:
     
     return res.success(Dict(values))
 
+  
   def visit_SwitchNode(self, node, context):
     res = RTResult()
     condition = res.register(self.visit(node.condition, context))
@@ -4251,6 +4725,7 @@ class Interpreter:
     
     return res.success(Number.null)
 
+  
   def visit_DotGetNode(self, node, context):
     res = RTResult()
     noun = res.register(self.visit(node.noun, context))
@@ -4262,6 +4737,7 @@ class Interpreter:
     if error: return res.failure(error)
     return res.success(result)
 
+  
   def visit_DotSetNode(self, node, context):
     res = RTResult()
     noun = res.register(self.visit(node.noun, context))
@@ -4276,22 +4752,26 @@ class Interpreter:
     if error: return res.failure(error)
 
     return res.success(result)
+
   
   def visit_StructNode(self, node, ctx):
         # TODO: report struct redefinition
         ctx.symbol_table.structs[node.name] = node.fields
         return RTResult().success(Number.null)
+
   
   def visit_ClassNode(self, node, ctx):
     # TODO: report class redefinition 
     ctx.symbol_table.classes[node.name] = node.fields 
     return RTResult().success(Number.null)
+
   
   def visit_StructCreationNode(self, node, ctx):
         res = RTResult()
         struct = ctx.symbol_table.structs[node.name]
 
         return res.success(StructInstance(node.name, {field: Number.null for field in struct}).set_pos(node.pos_start, node.pos_end).set_context(ctx))
+
   
   def visit_ClassCreationNode(self, node, ctx):
         res = RTResult()
@@ -4330,7 +4810,11 @@ global_symbol_table.set("true", Number.true)
 global_symbol_table.set("Argv", make_argv())
 global_symbol_table.set("math_pi", Number.math_PI)
 global_symbol_table.set("print", BuiltInFunction.print)
+global_symbol_table.set("error", BuiltInFunction.error)
 global_symbol_table.set("println", BuiltInFunction.println)
+global_symbol_table.set("backgroundColor", BuiltInFunction.backgroundColor)
+global_symbol_table.set("foregroundColor", BuiltInFunction.foregroundColor)
+global_symbol_table.set("resetColor", BuiltInFunction.resetColor)
 global_symbol_table.set("id", BuiltInFunction.id)
 global_symbol_table.set("bit_to_int", BuiltInFunction.bit_to_int)
 global_symbol_table.set("Int", BuiltInFunction.Int)
@@ -4356,7 +4840,6 @@ global_symbol_table.set("extend", BuiltInFunction.extend)
 global_symbol_table.set("len", BuiltInFunction.len)
 global_symbol_table.set("Run", BuiltInFunction.run)
 global_symbol_table.set("wait", BuiltInFunction.wait)
-
 
 def run(fn, text, context=None, entry_pos=None):
   # Generate tokens

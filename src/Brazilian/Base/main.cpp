@@ -1,44 +1,25 @@
+#define basBR_exports
+
 #include <iostream>
-#include <conio.h>
-#include <string>
-#include <Python.h>
+#include <cstring>
 
-#define PY_SSIZE_T_CLEAN
+#ifdef _WIN32
+    #include <conio.h>
+#else
+    #include "./linux-conio/linux_conio.h"
+#endif
 
-using namespace std;
+extern "C" {
+    __declspec(dllexport) const char* input_char(const char* msg) {
+        printf(msg);
 
-string input_key(string val = "") {
-    cout << val;
-    char ret = _getch();
-    cout << ret << endl;
-    return string(1, ret);
-}
+        char ch;
 
-static PyObject *Input_key(PyObject *self, PyObject *args) {
-    const char *val = nullptr;
-    string sts;
+        ch = _getch();
 
-    if (!PyArg_ParseTuple(args, "s", &val)) {
-        return NULL;
+        char* cstr = new char[2];
+        cstr[0] = ch;
+        cstr[1] = '\0';
+        return cstr;
     }
-
-    sts = input_key(val);
-    return PyUnicode_FromString(sts.c_str());
-}
-
-static PyMethodDef BasBR_mod[] = {
-    {"input_key", Input_key, METH_VARARGS, "Returns a one character."},
-    {NULL, NULL, 0, NULL}
-};
-
-static struct PyModuleDef basBR = {
-    PyModuleDef_HEAD_INIT,
-    "basBR",
-    NULL,
-    -1,
-    BasBR_mod
-};
-
-PyMODINIT_FUNC PyInit_basBR(void) {
-    return PyModule_Create(&basBR);
 }
