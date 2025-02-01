@@ -1,62 +1,38 @@
-floatToInt = function (x)
-    var = split( Str(x), "." )
+class Maçã
+    cor = null
 
-    if Int(var / 1) == 0 then
-        return Int(var / 0)
-    else
-        return x
+    function construct(Cor)
+        if Cor == "Vermelha" then
+            this.cor = 1
+        elif Cor = "Verde" then
+            this.cor = 2
+        else
+            error("Erro, aqui são somente Maçãs Vermelhas ou Verdes.")
+        end
+    end
+
+    function Comer()
+        println("Nhãum Nhãum")
+        wait(3)
+
+        if this.cor == 1 then
+            println("Maçã Vermelha comida.")
+        else
+            println("Maçã Verde comida.")
+        end
     end
 end
 
-class realCalc
-    global xe = 0
-    global ye = 0
-
-    x = 0
-    y = 0
-
-    function construct(x, y, clas)
-        global xe = x
-        global ye = y
-
-        clas.x = x
-        clas.y = y
-    end
-
-    function add()
-        return xe + ye
-    end
-
-    function sub()
-        return xe - ye
-    end
-
-    function mul()
-        return xe * ye
-    end
-
-    function div()
-        return xe / ye
-    end
-
-    function pow()
-        return xe ^ ye
-    end
-
-    function rest()
-        return xe % ye
-    end
+struct CoresMaçâs
+    vermelha
+    verde
 end
 
-rc = realCalc()
+cor = CoresMaçâs{}
+cor.vermelha = "Vermelha"
+cor.verde = "Verde"
 
-rc.construct(100, 4, rc)
-println(Str(rc.x) + " + " + Str(rc.y) + " = " + Str(rc.add()))
-println(Str(rc.x) + " - " + Str(rc.y) + " = " + Str(rc.sub()))
-println(Str(rc.x) + " × " + Str(rc.y) + " = " + Str(rc.mul()))
+🍎 = Maçã()
+🍎.construct(cor.verde, 🍎)
 
-println(Str(rc.x) + " ÷ " + Str(rc.y) + " = " + Str(floatToInt(rc.div())))
-
-println(Str(rc.x) + " ^ " + Str(rc.y) + " = " + Str(rc.pow()))
-
-println(Str(rc.x) + " mod " + Str(rc.y) + " = " + Str(rc.rest()))
+🍎.Comer(🍎)

@@ -3,7 +3,9 @@
 #######################################
 
 import string
+import emoji
 import os
+import re
 import math
 import time
 import sys
@@ -15,6 +17,7 @@ import pickle
 import psutil
 from typing import *
 import Brazilian.Libs.basBR as basBR
+import ctypes
 
 #######################################
 # StringsWithArrowsAndMore
@@ -103,9 +106,20 @@ if not os.path.isfile(IMPORT_PATH_NAME):
 else:
   with open(IMPORT_PATH_NAME, "r") as f:
     IMPORT_PATHS = list(f.readlines())
-DIGITS = '0123456789'
-LETTERS = string.ascii_letters
-VALID_IDENTIFIERS = LETTERS + DIGITS + "$_"
+
+def VALID_IDENTIFIERS(s):
+    latin = re.search(r'[\u0041-\u007A\u00C0-\u00FF\u0100-\u017F\u1E00-\u1EFF]', s)
+    cyrillic = re.search(r'[\u0400-\u04FF]', s)
+    arabic = re.search(r'[\u0600-\u06FF]', s)
+    chinese = re.search(r'[\u4E00-\u9FFF]', s)
+    devanagari = re.search(r'[\u0900-\u097F]', s)
+    korean = re.search(r'[\uAC00-\uD7AF]', s)
+    emojis = bool(emoji.emoji_count(s))
+    
+    if bool(latin) or bool(cyrillic) or bool(arabic) or bool(chinese) or bool(emojis) or bool(devanagari) or bool(korean) or (s in "1234567890_$"):
+      return True
+    else:
+      return False
 
 global_variables = {}
 
@@ -435,7 +449,6 @@ class Token:
 
   def matches(self, type_, value):
     return self.type == type_ and self.value == value
-
   
   def __repr__(self):
     if self.value: return f'{self.type.name}:{self.value}'
@@ -506,9 +519,9 @@ class Lexer:
         self.advance()
       elif self.current_char == '#':
         self.skip_comment()
-      elif self.current_char in DIGITS:
+      elif self.current_char in "0123456789":
         tokens.append(self.make_number())
-      elif self.current_char in VALID_IDENTIFIERS:
+      elif VALID_IDENTIFIERS(self.current_char):
         tokens.append(self.make_identifier())
       elif self.current_char == '"':
         tokens.append(self.make_string())
@@ -548,7 +561,7 @@ class Lexer:
     dot_count = 0
     pos_start = self.pos.copy()
 
-    while self.current_char != None and self.current_char in DIGITS + '.':
+    while self.current_char != None and self.current_char in "0123456789" + '.':
       if self.current_char == '.':
         if dot_count == 1: break
         dot_count += 1
@@ -594,7 +607,7 @@ class Lexer:
     id_str = ''
     pos_start = self.pos.copy()
 
-    while self.current_char != None and self.current_char in VALID_IDENTIFIERS:
+    while self.current_char != None and VALID_IDENTIFIERS(self.current_char):
       id_str += self.current_char
       self.advance()
 
@@ -1495,6 +1508,7 @@ class Parser:
           ))
 
         self.advance(res)
+
       return res.success(CallNode(func, arg_nodes))
     return res.success(func)
 
@@ -1542,7 +1556,7 @@ class Parser:
           self.current_tok.pos_start, self.current_tok.pos_start,
           "Expected identifier"
         ))
-      
+
       node = DotGetNode(node, self.current_tok, node.pos_start, self.current_tok.pos_end)
       self.advance(res)
     
@@ -2315,6 +2329,8 @@ class Parser:
       ))
 
     self.advance(res)
+
+    arg_name_toks.append(Token(TokenType.IDENTIFIER, "this"))
     
     return res.success(FuncDefNode(
       var_name_tok,
@@ -3515,7 +3531,12 @@ class BaseFunction(Value):
     res = RTResult()
     for i in range(len(arg_names)):
       arg_name = arg_names[i]
-      dynamic = dynamics[i]
+
+      try:
+        dynamic = dynamics[i]
+      except:
+        dynamic = None
+
       arg_value = defaults[i] if i >= len(args) else args[i]
       if dynamic is not None:
         dynamic_context = Context(f"{self.name} (dynamic argument '{arg_name}')", exec_ctx, dynamic.pos_start.copy())
@@ -3700,14 +3721,21 @@ class BuiltInFunction(BaseFunction):
   
   @args(['value'])
   def execute_Float(self, exec_ctx):
-    val = str(exec_ctx.symbol_table.get('value'))
+    val = exec_ctx.symbol_table.get('value').value
 
     return RTResult().success(Number(float(val)))
 
+  @args(['value'])
+  def execute_hex(self, exec_ctx):
+    val = exec_ctx.symbol_table.get('value').value
+
+    val = int.from_bytes(val, byteorder="little", signed=True)
+
+    return RTResult().success(Bin(hex(val)))
   
   @args(['value'])
   def execute_Str(self, exec_ctx):
-    val = exec_ctx.symbol_table.get('value')
+    val = exec_ctx.symbol_table.get('value').value
 
     return RTResult().success(String(str(val)))
 
@@ -3789,7 +3817,70 @@ class BuiltInFunction(BaseFunction):
   def execute_exit(self, exec_ctx):
     sys.exit(0 if str(exec_ctx.symbol_table.get('value')) == '0' else int(str(exec_ctx.symbol_table.get('value'))))
     return RTResult().success(Number.null)
+  
+  @args(['mem'])
+  def execute_get_mem_val(self, exec_ctx):
+    val = exec_ctx.symbol_table.get('mem').value
 
+    if len(val) == 4:
+        try:
+            return RTResult().success(Number(ctypes.c_int.from_buffer_copy(val).value))
+        except:
+            pass
+        
+        try:
+            return RTResult().success(Number(ctypes.c_float.from_buffer_copy(val).value))
+        except:
+            pass
+    elif len(val) == 8:
+        try:
+            return RTResult().success(Number(ctypes.c_double.from_buffer_copy(val).value))
+        except:
+            pass
+    elif len(val) > 1:
+        try:
+            return RTResult().success(String(ctypes.c_char_p.from_buffer_copy(val).value))
+        except:
+            pass
+
+  @args(['var'])
+  def execute_pointer(self, exec_ctx):
+    var = exec_ctx.symbol_table.get('var')
+
+    if isinstance(var, String):
+      val = ctypes.pointer(ctypes.c_char_p(var.value))
+      valp = ctypes.pointer(val)
+
+      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+
+      return RTResult().success(Bin(realb))
+    elif isinstance(var, Number):
+      val = ctypes.c_int(int(var.value))
+      valp = ctypes.pointer(val)
+
+      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+
+      return RTResult().success(Bin(realb))
+    elif isinstance(var, Bin):
+      val = ctypes.c_int(var.value)
+      valp = ctypes.pointer(val)
+
+      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+
+      return RTResult().success(Bin(realb))
+    elif isinstance(var, Bytes):
+      val = ctypes.pointer(ctypes.create_string_buffer(var.value))
+      valp = ctypes.pointer(val)
+
+      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+
+      return RTResult().success(Bin(realb))
+    else:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The index needs be Number, String, Bytes or Bin type, not " + str(type(val)),
+        exec_ctx
+      ))
   
   @args([])
   def execute_clear(self, exec_ctx):
@@ -3960,6 +4051,9 @@ class BuiltInFunction(BaseFunction):
 
     return RTResult().success(Number.null)
 
+BuiltInFunction.pointer         = BuiltInFunction("pointer")
+BuiltInFunction.hex             = BuiltInFunction("hex")
+BuiltInFunction.get_mem_val     = BuiltInFunction("get_mem_val")
 BuiltInFunction.print           = BuiltInFunction("print")
 BuiltInFunction.error           = BuiltInFunction("error")
 BuiltInFunction.println         = BuiltInFunction("println")
@@ -4708,8 +4802,6 @@ class Interpreter:
       case = res.register(self.visit(case, context))
       if res.should_return(): return res
 
-      print(f"[DEBUG] {object.__repr__(case)}")
-
       eq, error = condition.get_comparison_eq(case)
       if error: return res.failure(error)
 
@@ -4762,7 +4854,9 @@ class Interpreter:
   
   def visit_ClassNode(self, node, ctx):
     # TODO: report class redefinition 
-    ctx.symbol_table.classes[node.name] = node.fields 
+    global classes
+
+    ctx.symbol_table.classes[node.name] = node.fields
     return RTResult().success(Number.null)
 
   
@@ -4779,7 +4873,13 @@ class Interpreter:
         global classes
         global global_variables
 
-        clases = ctx.symbol_table.classes[node.name]
+        clases = None
+
+        try:
+          clases = ctx.symbol_table.classes[node.name]
+        except:
+          clases = classes[node.name]
+        
         for clss in clases:
           fields[clss] = self.visit(classes[node.name][clss], self.context).value
 
@@ -4809,6 +4909,9 @@ global_symbol_table.set("false", Number.false)
 global_symbol_table.set("true", Number.true)
 global_symbol_table.set("Argv", make_argv())
 global_symbol_table.set("math_pi", Number.math_PI)
+global_symbol_table.set("pointer", BuiltInFunction.pointer)
+global_symbol_table.set("get_mem_val", BuiltInFunction.get_mem_val)
+global_symbol_table.set("hex", BuiltInFunction.hex)
 global_symbol_table.set("print", BuiltInFunction.print)
 global_symbol_table.set("error", BuiltInFunction.error)
 global_symbol_table.set("println", BuiltInFunction.println)

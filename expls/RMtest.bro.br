@@ -1,9 +1,12 @@
-for i = 1 to 59 then
-    wait(60)
+test int = 10
+testp bin = pointer(test)
+testpmg = get_mem_val(testp)
 
-    println(i)
-end
+print("Valor bytes: ")
+println(testp)
 
-wait(60)
+print("Valor hexadecimal: ")
+println(hex(testp))
 
-println("1 Hour")
+print("Valor pegado no local da memoria: ")
+println(testpmg)

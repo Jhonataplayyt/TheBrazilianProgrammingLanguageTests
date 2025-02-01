@@ -1,14 +1,9 @@
 #include <iostream>
-#include "Python.h"
+
+using namespace std;
 
 int main() {
-    Py_Initialize();
-
-    const char* pythonCode = "def printTerm(param):\n    print(param)\n\nprintTerm('Oi')";
-
-    PyRun_SimpleString(pythonCode);
-
-    Py_Finalize();
+    cout << "Hello, World!" << endl;
 
     return 0;
 }
