@@ -1,12 +1,10 @@
-test int = 10
-testp bin = pointer(test)
-testpmg = get_mem_val(testp)
+var = 1065 % (1 << 32)
+varp = pointer(var)
+varphex = hex(varp)
+varpid = id(varphex)
+varpnum = Int(varphex, 16) % (1 << 64)
 
-print("Valor bytes: ")
-println(testp)
-
-print("Valor hexadecimal: ")
-println(hex(testp))
-
-print("Valor pegado no local da memoria: ")
-println(testpmg)
+println(varp)
+println(varphex)
+println(varpid)
+println(varpnum)

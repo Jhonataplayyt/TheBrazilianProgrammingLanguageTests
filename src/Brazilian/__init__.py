@@ -484,6 +484,8 @@ SINGLE_CHAR_TOKS: Dict[str, TokenType] = {
 TYPES = [
   "int",
   "float", 
+  "double",
+  "char",
   "string", 
   "bin", 
   "bytes", 
@@ -1338,7 +1340,7 @@ class Parser:
         if res.error: return res
 
         if Type == "int":
-          if ((isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, int)) or (True if is_type in ['null'] else False):
+          if ((isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode) or isinstance(assign_expr, BaseFunction)) and isinstance(is_type, int)) or (True if is_type in ['null'] else False):
             return res.success(VarAssignNode(var_name_tok, assign_expr))
           else:
             return res.failure(ValueError(
@@ -1351,7 +1353,15 @@ class Parser:
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
-              f"The variable cant's be int"
+              f"The variable cant's be float"
+            ))
+        elif Type == "char":
+          if ((isinstance(assign_expr, StringNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and (isinstance(is_type, string)) and len(is_type) == 1) or (True if is_type in ['null'] else False):
+            return res.success(VarAssignNode(var_name_tok, assign_expr))
+          else:
+            return res.failure(ValueError(
+              self.current_tok.pos_start, self.current_tok.pos_end,
+              f"The variable cant's be char"
             ))
         elif Type == "string":
           if (((isinstance(assign_expr, StringNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, str))) or (True if is_type in ['null'] else False):
@@ -2843,35 +2853,35 @@ class Number(Value):
 
   
   def xored(self, other):
-    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes)or isinstance(other, BaseFunction):
       return Number(self.value ^ other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
   
   def left_shifted(self, other):
-    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value << other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
   
   def right_shifted(self, other):
-    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value >> other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
   
   def bitwise_and(self, other):
-    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value & other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
 
   
   def bitwise_or(self, other):
-    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, String) or isinstance(other, BaseFunction):
+    if isinstance(other, Bin) or isinstance(other, Number) or isinstance(other, Bytes) or isinstance(other, BaseFunction):
       return Number(self.value | other.value).set_context(self.context), None
     else:
       return None, Value.illegal_operation(self, other)
@@ -3698,7 +3708,7 @@ class BuiltInFunction(BaseFunction):
     elif isinstance(val, Number):
       return RTResult().success(Number(id(int(str(val)))))
     elif isinstance(val, Bin):
-      return RTResult().success(Number(id(bin(convert_forL(val)))))
+      return RTResult().success(Number(convert_forL(val)))
     elif isinstance(val, Bytes):
       return RTResult().success(Number(id(to_bytes_forL(val))))
     elif isinstance(val, BaseFunction):
@@ -3706,7 +3716,7 @@ class BuiltInFunction(BaseFunction):
     else:
       return RTResult().failure(RTError(
         self.pos_start, self.pos_end,
-        "The index needs be Number, String, Bytes or Bin type, not " + str(type(val)),
+        "The index needs be Number, String, Bytes or Bin type, not '" + str(type(val)) + "'",
         exec_ctx
       ))
 
@@ -3716,42 +3726,93 @@ class BuiltInFunction(BaseFunction):
     val = exec_ctx.symbol_table.get('value')
     bit = exec_ctx.symbol_table.get('bit')
 
-    return RTResult().success(Number(int(str(val.copy()), int(str(bit.copy()) if not isinstance(bit, (Null, true, false)) else 0))))
+    try:
+      return RTResult().success(Number(int(val.value, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value or bit needs be Integer, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
 
-  
-  @args(['value'])
+  @args(['value', 'bit'], [None, Number.null])
   def execute_Float(self, exec_ctx):
-    val = exec_ctx.symbol_table.get('value').value
+    val = exec_ctx.symbol_table.get('value')
+    bit = exec_ctx.symbol_table.get('bit')
 
-    return RTResult().success(Number(float(val)))
+    try:
+      return RTResult().success(Number(float(val.value, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value or bit needs be Float, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
 
   @args(['value'])
   def execute_hex(self, exec_ctx):
-    val = exec_ctx.symbol_table.get('value').value
+    val = exec_ctx.symbol_table.get('value')
 
-    val = int.from_bytes(val, byteorder="little", signed=True)
+    if isinstance(val, (Bin, Bytes)):
+      val = Number(int.from_bytes(val.value, byteorder="little", signed=True))
+    else:
+      val = Number(val.value)
 
-    return RTResult().success(Bin(hex(val)))
+    try:
+      return RTResult().success(Bin(hex(val.value)))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value or bit needs be Number or Bytes, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
   
-  @args(['value'])
+  @args(['value', 'bit'], [None, Number.null])
+  def execute_Char(self, exec_ctx):
+    val = exec_ctx.symbol_table.get('value')
+    bit = exec_ctx.symbol_table.get('bit')
+
+    try:
+      return RTResult().success(String(str(val.value if len(val.value) == 1 else None, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value or bit needs be Number, Char or Bytes, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
+
+  @args(['value', 'bit'], [None, Number.null])
   def execute_Str(self, exec_ctx):
-    val = exec_ctx.symbol_table.get('value').value
+    val = exec_ctx.symbol_table.get('value')
+    bit = exec_ctx.symbol_table.get('bit')
 
-    return RTResult().success(String(str(val)))
+    try:
+      return RTResult().success(String(str(val.value, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value or bit needs be Number, String Bin or Bytes, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
 
-  
-  @args(['value'])
+  @args(['value', 'bit'], [None, Number.null])
   def execute_Bin(self, exec_ctx):
-    val = bin(int(str(exec_ctx.symbol_table.get('value'))))
+    val = exec_ctx.symbol_table.get('value')
+    bit = exec_ctx.symbol_table.get('bit')
 
-    return RTResult().success(Bin(val))
+    if isinstance(val, (Bin, Bytes)):
+      val = Number(int.from_bytes(val.value, byteorder="little", signed=True))
+    else:
+      val = Number(val.value)
 
-  
-  @args(['value'])
-  def execute_from_bytes_int(self, exec_ctx):
-    val = convert_forL(exec_ctx.symbol_table.get('value'))
-
-    return RTResult().success(Number(int.from_bytes(to_bytes(val))))
+    try:
+      return RTResult().success(Bin(bin(val.value, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value or bit needs be Number or Bytes, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
 
   
   @args(['value', 'index'])
@@ -4064,6 +4125,7 @@ BuiltInFunction.print_ret       = BuiltInFunction("print_ret")
 BuiltInFunction.system          = BuiltInFunction("system")
 BuiltInFunction.id              = BuiltInFunction("id")
 BuiltInFunction.Int             = BuiltInFunction("Int")
+BuiltInFunction.Char            = BuiltInFunction("Char")
 BuiltInFunction.bit_to_int      = BuiltInFunction("bit_to_int")
 BuiltInFunction.Bin             = BuiltInFunction("Bin")
 BuiltInFunction.Float           = BuiltInFunction("Float")
@@ -4921,6 +4983,7 @@ global_symbol_table.set("resetColor", BuiltInFunction.resetColor)
 global_symbol_table.set("id", BuiltInFunction.id)
 global_symbol_table.set("bit_to_int", BuiltInFunction.bit_to_int)
 global_symbol_table.set("Int", BuiltInFunction.Int)
+global_symbol_table.set("Char", BuiltInFunction.Char)
 global_symbol_table.set("Bin", BuiltInFunction.Bin)
 global_symbol_table.set("Float", BuiltInFunction.Float)
 global_symbol_table.set("Str", BuiltInFunction.Str)

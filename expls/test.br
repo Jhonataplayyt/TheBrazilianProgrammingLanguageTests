@@ -32,7 +32,33 @@ cor = CoresMaçâs{}
 cor.vermelha = "Vermelha"
 cor.verde = "Verde"
 
-🍎 = Maçã()
-🍎.construct(cor.verde, 🍎)
+a = null
 
-🍎.Comer(🍎)
+println("Maçã Vermelha. 1\nMaçã Verde. 2")
+
+while true then
+    try
+        a = Int(input_key("                        : "))
+        println(a)
+
+        if a == 1 then
+            🍎 = Maçã()
+            🍎.construct(cor.vermelha, 🍎)
+
+            🍎.Comer(🍎)
+
+            break
+        elif a == 2 then
+            🍎 = Maçã()
+            🍎.construct(cor.verde, 🍎)
+
+            🍎.Comer(🍎)
+
+            break
+        else
+            println("Os números precisam ser 1 ou 2.")
+        end
+    catch as e
+        println("Os números precisam ser 1 ou 2.")
+    end
+end
