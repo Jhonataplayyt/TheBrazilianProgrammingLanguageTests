@@ -43,6 +43,9 @@ while true then
 
         if a == 1 then
             🍎 = Maçã()
+
+            println(🍎)
+
             🍎.construct(cor.vermelha, 🍎)
 
             🍎.Comer(🍎)

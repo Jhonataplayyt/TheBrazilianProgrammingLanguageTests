@@ -6,14 +6,10 @@ system = platform.system()
 
 LibPath = None
 
-if system == 'Windows':
-    LibPath = r'C:\\Users\\tempe\\Desktop\\AllSv\\BrazilianTestInterpreter\\BrazilianProgrammingLanguage\\src\\Brazilian\\Base\\basBR.dll'
-elif system == 'Linux':
-    LibPath = r'C:\\Users\\tempe\\Desktop\\AllSv\\BrazilianTestInterpreter\\BrazilianProgrammingLanguage\\src\\Brazilian\\Base\\basBR.so'
-elif system == 'Darwin':
-    LibPath = r'C:\\Users\\tempe\\Desktop\\AllSv\\BrazilianTestInterpreter\\BrazilianProgrammingLanguage\\src\\Brazilian\\Base\\basBR.dylib'
+if platform.system() == 'Windows':
+    LibPath = './src/Brazilian/Base/basBR.dll'
 else:
-    raise OSError('OS not supported.')
+    LibPath = './src/Brazilian/Base/libbasBR.so'
 
 basBR = ctypes.CDLL(LibPath, winmode=0)
 

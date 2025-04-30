@@ -6,6 +6,7 @@ import string
 import emoji
 import os
 import re
+import numpy as np
 import math
 import time
 import sys
@@ -18,6 +19,8 @@ import psutil
 from typing import *
 import Brazilian.Libs.basBR as basBR
 import ctypes
+from Brazilian.Libs.faster import fast_memorize_for_loop, fast_memorize_while_loop, fast_memorize_for_in_loop
+from numba import cuda
 
 #######################################
 # StringsWithArrowsAndMore
@@ -82,6 +85,16 @@ def convert_forL(value):
   else:
     return val
 
+def convert_types_to_values(value):
+  if isinstance(value, (int, float)):
+    return Number(value)
+  elif isinstance(value, (str)):
+    return String(value)
+  elif isinstance(value, (list)):
+    return List(value)
+  else:
+    return
+
 def lineTry(Try: Any, Except: any, exception:Any = None):
   try:
     return Try
@@ -126,6 +139,9 @@ global_variables = {}
 temp_func_name = []
 
 classes = {}
+
+current_op = None
+
 #######################################
 # ERRORS
 #######################################
@@ -502,6 +518,8 @@ class Lexer:
     self.pos = Position(-1, 0, -1, fn, text)
     self.current_char = None
     self.advance()
+    self.in_num = False
+    self.real_num = ''
 
   def advance(self):
     self.pos.advance(self.current_char)
@@ -512,48 +530,86 @@ class Lexer:
 
     while self.current_char != None:
       if self.current_char in SINGLE_CHAR_TOKS:
+        self.in_num = False
+
         tt = SINGLE_CHAR_TOKS[self.current_char]
         pos = self.pos.copy()
         self.advance()
 
         tokens.append(Token(tt, pos_start=pos))
       elif self.current_char.isspace():
+        self.in_num = False
+
         self.advance()
       elif self.current_char == '#':
+        self.in_num = False
+
         self.skip_comment()
       elif self.current_char in "0123456789":
+        self.in_num = True
+
         tokens.append(self.make_number())
+      elif self.in_num and self.current_char == '_':
+        self.advance()
+
+        self.in_num = False
       elif VALID_IDENTIFIERS(self.current_char):
+        self.in_num = False
+
         tokens.append(self.make_identifier())
       elif self.current_char == '"':
+        self.in_num = False
+
         tokens.append(self.make_string())
       elif self.current_char == '~':
+        self.in_num = False
+
         tokens.append(self.make_bytes())
       elif self.current_char == '-':
+        self.in_num = False
+
         tokens.append(self.make_minus_or_arrow())
       elif self.current_char == '!':
+        self.in_num = False
+
         token, error = self.make_not_equals()
         if error: return [], error
         tokens.append(token)
       elif self.current_char == '\\':
+        self.in_num = False
+
         self.advance()
       elif self.current_char == '=':
+        self.in_num = False
+
         tokens.append(self.make_equals())
       elif self.current_char == '<':
+        self.in_num = False
+
         tokens.append(self.make_less_than())
       elif self.current_char == '>':
+        self.in_num = False
+
         tokens.append(self.make_greater_than())
       elif self.current_char == '|':
+        self.in_num = False
+
         tokens.append(self.make_bitwise_or())
       elif self.current_char == '&':
+        self.in_num = False
+
         tokens.append(self.make_bitwise_and())
       elif self.current_char == '°':
+        self.in_num = False
+
         tokens.append(self.make_bitwise_xor())
       else:
         pos_start = self.pos.copy()
         char = self.current_char
         self.advance()
         return [], IllegalCharError(pos_start, self.pos, "'" + char + "'")
+
+    self.in_num = False
 
     tokens.append(Token(TokenType.EOF, pos_start=self.pos))
     return tokens, None
@@ -562,18 +618,34 @@ class Lexer:
     num_str = ''
     dot_count = 0
     pos_start = self.pos.copy()
+    val = None
 
     while self.current_char != None and self.current_char in "0123456789" + '.':
       if self.current_char == '.':
         if dot_count == 1: break
         dot_count += 1
+      elif self.current_char == '_':
+        self.advance()
+        pass
+
       num_str += self.current_char
       self.advance()
 
-    if dot_count == 0:
-      return Token(TokenType.INT, int(num_str), pos_start, self.pos)
+    self.real_num += num_str
+
+    if dot_count == 0 and self.current_char != '_':
+      val = Token(TokenType.INT, int(self.real_num), pos_start, self.pos)
+      
+      self.real_num = ''
     else:
-      return Token(TokenType.FLOAT, float(num_str), pos_start, self.pos)
+      if self.current_char != '_':
+        val = Token(TokenType.FLOAT, float(self.real_num), pos_start, self.pos)
+
+        self.real_num = ''
+      else:
+        self.advance()
+
+    return val
 
   def make_string(self):
     string = ''
@@ -776,11 +848,12 @@ class VarAccessNode:
     self.pos_end = self.var_name_tok.pos_end
 
 class VarAssignNode:
-  def __init__(self, var_name_tok, value_node, is_const=False, is_global=False):
+  def __init__(self, var_name_tok, value_node, is_const=False, is_global=False, current_op=[TokenType.EQ]):
     self.var_name_tok = var_name_tok
     self.value_node = value_node
     self.is_const = is_const
     self.is_global = is_global
+    self.current_op = [item for item in current_op if item != "" and item is not None]
 
     self.pos_start = self.var_name_tok.pos_start
     self.pos_end = self.value_node.pos_end
@@ -1131,6 +1204,7 @@ class Parser:
         self.current_tok.pos_start, self.current_tok.pos_end,
         "Token cannot appear after previous tokens"
       ))
+  
     return res
 
   ###################################
@@ -1237,6 +1311,7 @@ class Parser:
 
   def expr(self):
     res = ParseResult()
+    global current_op
 
     var_assign_node = res.try_register(self.assign_expr())
     if var_assign_node: return res.success(var_assign_node)
@@ -1255,6 +1330,14 @@ class Parser:
 
       self.advance(res)
 
+      if self.current_tok.type in [TokenType.PLUS, TokenType.MINUS, TokenType.MUL, TokenType.DIV, TokenType.PERC, TokenType.POW]:
+        current_op = self.current_tok.type
+
+        self.advance(res)
+
+        if self.current_tok.type != TokenType.EQ:
+          current_op = None
+
       if self.current_tok.type != TokenType.EQ:
         return res.failure(InvalidSyntaxError(
           self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1266,7 +1349,7 @@ class Parser:
       assign_expr = res.register(self.expr())
       if res.error: return res
 
-      return res.success(VarAssignNode(identifier, assign_expr, is_const=True, is_global=False))
+      return res.success(VarAssignNode(identifier, assign_expr, is_const=True, is_global=False, current_op=[current_op if current_op else None, TokenType.EQ]))
     
     if self.current_tok.matches(TokenType.KEYWORD, "global"):
       self.advance(res)
@@ -1281,6 +1364,14 @@ class Parser:
 
       self.advance(res)
 
+      if self.current_tok.type in [TokenType.PLUS, TokenType.MINUS, TokenType.MUL, TokenType.DIV, TokenType.PERC, TokenType.POW]:
+        current_op = self.current_tok.type
+
+        self.advance(res)
+
+        if self.current_tok.type != TokenType.EQ:
+          current_op = None
+
       if self.current_tok.type != TokenType.EQ:
         return res.failure(InvalidSyntaxError(
           self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1292,7 +1383,7 @@ class Parser:
       assign_expr = res.register(self.expr())
       if res.error: return res
 
-      return res.success(VarAssignNode(identifier, assign_expr, is_const=False, is_global=True))
+      return res.success(VarAssignNode(identifier, assign_expr, is_const=False, is_global=True, current_op=[current_op if current_op else None, TokenType.EQ]))
 
     node = res.register(self.bin_op(self.comp_expr, ((TokenType.KEYWORD, 'and'), (TokenType.KEYWORD, 'or'))))
 
@@ -1313,6 +1404,7 @@ class Parser:
   def assign_expr(self):
       res = ParseResult()
       pos_start = self.current_tok.pos_start
+      global current_op
 
       if self.current_tok.type != TokenType.IDENTIFIER: 
         return res.failure(InvalidSyntaxError(
@@ -1326,6 +1418,14 @@ class Parser:
       if self.current_tok.value in TYPES:
         Type = self.current_tok.value
         self.advance(res)
+
+        if self.current_tok.type in [TokenType.PLUS, TokenType.MINUS, TokenType.MUL, TokenType.DIV, TokenType.PERC, TokenType.POW]:
+          current_op = self.current_tok.type
+
+          self.advance(res)
+
+          if self.current_tok.type != TokenType.EQ:
+            current_op = None
 
         if self.current_tok.type != TokenType.EQ:
           return res.failure(InvalidSyntaxError(
@@ -1341,7 +1441,7 @@ class Parser:
 
         if Type == "int":
           if ((isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode) or isinstance(assign_expr, BaseFunction)) and isinstance(is_type, int)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1349,7 +1449,7 @@ class Parser:
             ))
         elif Type == "float":
           if ((isinstance(assign_expr, NumberNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, float)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1357,7 +1457,7 @@ class Parser:
             ))
         elif Type == "char":
           if ((isinstance(assign_expr, StringNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and (isinstance(is_type, string)) and len(is_type) == 1) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1365,7 +1465,7 @@ class Parser:
             ))
         elif Type == "string":
           if (((isinstance(assign_expr, StringNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, str))) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1373,7 +1473,7 @@ class Parser:
             ))
         elif Type == "list":
           if ((isinstance(assign_expr, ListNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, list)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1381,7 +1481,7 @@ class Parser:
             ))
         elif Type == "dict":
           if ((isinstance(assign_expr, DictNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) and isinstance(is_type, dict)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1389,7 +1489,7 @@ class Parser:
             ))
         elif Type == "bool":
           if (isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null', 'true', 'false'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1397,7 +1497,7 @@ class Parser:
             ))
         elif Type == "bin":
           if (isinstance(assign_expr, BinNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1405,7 +1505,7 @@ class Parser:
             ))
         elif Type == "bytes":
           if (isinstance(assign_expr, ByteNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1413,7 +1513,7 @@ class Parser:
             ))
         elif Type == "func":
           if (isinstance(assign_expr, FuncDefNode) or isinstance(assign_expr, CallNode) or isinstance(assign_expr, VarAccessNode)) or (True if is_type in ['null'] else False):
-            return res.success(VarAssignNode(var_name_tok, assign_expr))
+            return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[current_op if current_op else None, TokenType.EQ]))
           else:
             return res.failure(ValueError(
               self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1425,6 +1525,14 @@ class Parser:
             f"This type: '{str(self.current_tok)}' not in types."
           ))
       else:
+        if self.current_tok.type in [TokenType.PLUS, TokenType.MINUS, TokenType.MUL, TokenType.DIV, TokenType.PERC, TokenType.POW]:
+          current_op = self.current_tok.type
+
+          self.advance(res)
+
+          if self.current_tok.type != TokenType.EQ:
+            current_op = None
+
         if self.current_tok.type != TokenType.EQ:
           return res.failure(InvalidSyntaxError(
             self.current_tok.pos_start, self.current_tok.pos_end,
@@ -1435,7 +1543,12 @@ class Parser:
 
         assign_expr = res.register(self.expr())
         if res.error: return res
-        return res.success(VarAssignNode(var_name_tok, assign_expr))  
+
+        n_current_op = current_op
+
+        current_op = None
+
+        return res.success(VarAssignNode(var_name_tok, assign_expr, current_op=[n_current_op if n_current_op else None, TokenType.EQ]))  
 
   def comp_expr(self):
     res = ParseResult()
@@ -1960,6 +2073,8 @@ class Parser:
         if res.error: return res
       else:
         step_value = None
+
+    print(self.current_tok)
 
     if not self.current_tok.matches(TokenType.KEYWORD, 'then'):
       return res.failure(InvalidSyntaxError(
@@ -3515,7 +3630,11 @@ class BaseFunction(Value):
 
   def generate_new_context(self):
     new_context = Context(self.name, self.context, self.pos_start)
-    new_context.symbol_table = SymbolTable(new_context.parent.symbol_table)
+
+    if new_context.parent:
+      new_context.symbol_table = SymbolTable(new_context.parent.symbol_table)
+    else:
+      new_context.symbol_table = SymbolTable()
     return new_context
 
   def check_args(self, arg_names, args, defaults):
@@ -3778,6 +3897,25 @@ class BuiltInFunction(BaseFunction):
       return RTResult().failure(RTError(
         self.pos_start, self.pos_end,
         "The value or bit needs be Number, Char or Bytes, not '" + str(type(val)) + "'",
+        exec_ctx
+      ))
+  
+  @args(['value'])
+  def execute_List(self, exec_ctx):
+    val = exec_ctx.symbol_table.get('value')
+
+    try:
+      val = list(val.value)
+      nval = []
+
+      for el in val:
+        nval.append(convert_types_to_values(el))
+
+      return RTResult().success(List(nval))
+    except:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The value needs be List, String, Char, not '" + str(type(val)) + "'",
         exec_ctx
       ))
 
@@ -4045,16 +4183,12 @@ class BuiltInFunction(BaseFunction):
   
   @args(["value"])
   def execute_len(self, exec_ctx):
-    list_ = exec_ctx.symbol_table.get("value")
+    value = exec_ctx.symbol_table.get("value")
 
-    if not isinstance(list_, List):
-      return RTResult().failure(RTError(
-        self.pos_start, self.pos_end,
-        "Argument must be list",
-        exec_ctx
-      ))
-
-    return RTResult().success(Number(len(list_.elements)))
+    try:
+      return RTResult().success(Number(len(value.elements)))
+    except:
+      return RTResult().success(Number(len(value.value)))
 
   
   @args(["fn"])
@@ -4126,6 +4260,7 @@ BuiltInFunction.system          = BuiltInFunction("system")
 BuiltInFunction.id              = BuiltInFunction("id")
 BuiltInFunction.Int             = BuiltInFunction("Int")
 BuiltInFunction.Char            = BuiltInFunction("Char")
+BuiltInFunction.List            = BuiltInFunction("List")
 BuiltInFunction.bit_to_int      = BuiltInFunction("bit_to_int")
 BuiltInFunction.Bin             = BuiltInFunction("Bin")
 BuiltInFunction.Float           = BuiltInFunction("Float")
@@ -4146,6 +4281,353 @@ BuiltInFunction.extend          = BuiltInFunction("extend")
 BuiltInFunction.len		          = BuiltInFunction("len")
 BuiltInFunction.run			        = BuiltInFunction("run")
 BuiltInFunction.wait            = BuiltInFunction("wait")
+
+class GPUFunction(BaseFunction):
+    def __init__(self, name):
+      super().__init__(name)
+
+  
+    def execute(self, args):
+      res = RTResult()
+
+      try:
+        exec_ctx = self.generate_new_context()
+
+        method_name = f'execute_{self.name}'
+        method = getattr(self, method_name, self.no_execute_method)
+
+        res.register(self.check_and_populate_args(method.arg_names, args, method.defaults, method.dynamics, exec_ctx))
+        if res.should_return(): return res
+
+        return_value = res.register(method(exec_ctx))
+        if res.should_return(): return res
+        return res.success(return_value)
+      except:
+        fake_pos = create_fake_pos("<GPU function CUDA Error>")
+
+        return res.failure(RTError(
+          fake_pos, fake_pos,
+          f"You don't have CUDA SDK.",
+          exec_ctx
+        ))
+
+    def no_execute_method(self, node, context):
+      raise Exception(f'No execute_{self.name} method defined')
+
+    def copy(self):
+      copy = GPUFunction(self.name)
+      copy.set_context(self.context)
+      copy.set_pos(self.pos_start, self.pos_end)
+      return copy
+
+    def __repr__(self):
+      return f"<GPU function {self.name}>"
+
+    #####################################
+
+    # Decorator for built-in functions
+    @staticmethod
+    def args(arg_names, defaults=None, dynamics=None):
+      if defaults is None:
+        defaults = [None] * len(arg_names)
+      if dynamics is None:
+        dynamics = [None] * len(arg_names)
+      def _args(f):
+        f.arg_names = arg_names
+        f.defaults = defaults
+        f.dynamics = dynamics
+        return f
+      return _args
+
+    #####################################
+
+    @cuda.jit
+    def add(x, y, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = x[idx] + y[idx]
+
+    @cuda.jit
+    def sub(x, y, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = x[idx] - y[idx]
+    
+    @cuda.jit
+    def mul(x, y, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = x[idx] * y[idx]
+
+    @cuda.jit
+    def div(x, y, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = x[idx] / y[idx]
+
+    @cuda.jit
+    def sqrt(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.sqrt(x[idx])
+    
+    @cuda.jit
+    def floor(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.floor(x[idx])
+    
+    @cuda.jit
+    def round(x, y, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = round(x[idx], y[idx])
+  
+    @cuda.jit
+    def sin(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.sin(x[idx])
+    
+    @cuda.jit
+    def cos(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.cos(x[idx])
+    
+    @cuda.jit
+    def tan(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.tan(x[idx])
+    
+    @cuda.jit
+    def factorial(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.factorial(x[idx])
+    
+    @cuda.jit
+    def radians(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.radians(x[idx])
+    
+    @cuda.jit
+    def gamma(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.gamma(x[idx])
+    
+    @cuda.jit
+    def log2(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.log2(x[idx])
+  
+    @cuda.jit
+    def exp(x, result):
+      idx = cuda.grid(1)
+      if idx < x.size:
+        result[idx] = math.exp(x[idx])
+    
+    def run_cuda_kernel_2Args(self, kernel, x, y):
+      a = np.array([x], dtype=np.float32)
+      b = np.array([y], dtype=np.float32)
+      c = np.zeros(x, dtype=np.float32)
+
+      a_device = cuda.to_device(a)
+      b_device = cuda.to_device(b)
+      c_device = cuda.device_array_like(c)
+
+      threads_per_block = 256
+      blocks_per_grid = (a.size + (threads_per_block - 1)) // threads_per_block
+
+      kernel[blocks_per_grid, threads_per_block](a_device, b_device, c_device)
+
+      return c_device.copy_to_host()
+
+    def run_cuda_kernel_1Args(self, kernel, x):
+      a = np.array([x], dtype=np.float32)
+      c = np.zeros(x, dtype=np.float32)
+
+      a_device = cuda.to_device(a)
+      c_device = cuda.device_array_like(c)
+
+      threads_per_block = 256
+      blocks_per_grid = (a.size + (threads_per_block - 1)) // threads_per_block
+
+      kernel[blocks_per_grid, threads_per_block](a_device, c_device)
+
+      return c_device.copy_to_host()
+
+    @args(['x', 'y'])
+    def execute_add(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+        y = exec_ctx.symbol_table.get("y")
+
+        result = self.run_cuda_kernel_2Args(self.add, x.value, y.value)[0]
+
+        if isinstance(x, String) and isinstance(y, String):
+            return RTResult().success(String(result))
+        elif isinstance(x, Number) and isinstance(y, Number):
+            return RTResult().success(Number(result))
+        elif isinstance(x, Dict) and isinstance(y, Dict):
+            return RTResult().success(Dict(result))
+    
+    @args(['x', 'y'])
+    def execute_sub(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+        y = exec_ctx.symbol_table.get("y")
+
+        result = self.run_cuda_kernel_2Args(self.sub, x.value, y.value)[0]
+
+        if isinstance(x, String) and isinstance(y, String):
+            return RTResult().success(String(result))
+        elif isinstance(x, Number) and isinstance(y, Number):
+            return RTResult().success(Number(result))
+        elif isinstance(x, Dict) and isinstance(y, Dict):
+            return RTResult().success(Dict(result))
+    
+    @args(['x', 'y'])
+    def execute_mul(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+        y = exec_ctx.symbol_table.get("y")
+
+        result = self.run_cuda_kernel_2Args(self.mul, x.value, y.value)[0]
+
+        if isinstance(x, String) and isinstance(y, String):
+            return RTResult().success(String(result))
+        elif isinstance(x, Number) and isinstance(y, Number):
+            return RTResult().success(Number(result))
+        elif isinstance(x, Dict) and isinstance(y, Dict):
+            return RTResult().success(Dict(result))
+    
+    @args(['x', 'y'])
+    def execute_div(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+        y = exec_ctx.symbol_table.get("y")
+
+        result = self.run_cuda_kernel_2Args(self.add, x.value, y.value)[0]
+
+        if isinstance(x, String) and isinstance(y, String):
+            return RTResult().success(String(result))
+        elif isinstance(x, Number) and isinstance(y, Number):
+            return RTResult().success(Number(result))
+        elif isinstance(x, Dict) and isinstance(y, Dict):
+            return RTResult().success(Dict(result))
+
+    @args(['x'])
+    def execute_sqrt(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.sqrt, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x', 'y'])
+    def execute_round(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+        y = exec_ctx.symbol_table.get("y")
+
+        result = self.run_cuda_kernel_2Args(self.round, x.value, y.value)[0]
+
+        if isinstance(x, String) and isinstance(y, String):
+            return RTResult().success(String(result))
+        elif isinstance(x, Number) and isinstance(y, Number):
+            return RTResult().success(Number(result))
+        elif isinstance(x, List) and isinstance(y, List):
+            return RTResult().success(List(result))
+        elif isinstance(x, Dict) and isinstance(y, Dict):
+            return RTResult().success(Dict(result))
+    
+    @args(['x'])
+    def execute_floor(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.floor, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_sin(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.sin, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_cos(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.cos, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_tan(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.tan, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_factorial(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.factorial, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_radians(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.radians, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_gamma(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.gamma, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_log2(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.log2, x.value)
+
+        return RTResult().success(Number(result))
+    
+    @args(['x'])
+    def execute_exp(self, exec_ctx):
+        x = exec_ctx.symbol_table.get("x")
+
+        result = self.run_cuda_kernel_1Args(self.exp, x.value)
+
+        return RTResult().success(Number(result))
+
+GPUFunction.add         = GPUFunction("add")
+GPUFunction.sub         = GPUFunction("sub")
+GPUFunction.mul         = GPUFunction("mul")
+GPUFunction.div         = GPUFunction("div")
+GPUFunction.sqrt        = GPUFunction("sqrt")
+GPUFunction.round       = GPUFunction("round")
+GPUFunction.floor       = GPUFunction("round")
+GPUFunction.sin         = GPUFunction("sin")
+GPUFunction.cos         = GPUFunction("cos")
+GPUFunction.tan         = GPUFunction("tan")
+GPUFunction.factorial   = GPUFunction("factorial")
+GPUFunction.radians     = GPUFunction("radians")
+GPUFunction.gamma       = GPUFunction("gamma")
+GPUFunction.log2        = GPUFunction("tan")
+GPUFunction.exp         = GPUFunction("exp")
 
 class Iterator(Value):
   def __init__(self, generator):
@@ -4377,10 +4859,12 @@ class SymbolTable:
 class Interpreter:
   def __init__(self):
     self.context = None
+    self.node = None
 
   
   def visit(self, node, context):
     self.context = context
+    self.node = node
 
     method_name = f'visit_{type(node).__name__}'
     method = getattr(self, method_name, self.no_visit_method)
@@ -4427,7 +4911,6 @@ class Interpreter:
     return res.success(
       List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
-
   
   def visit_VarAccessNode(self, node, context):
     global global_variables
@@ -4455,7 +4938,107 @@ class Interpreter:
   def visit_VarAssignNode(self, node, context):
     res = RTResult()
     var_name = node.var_name_tok.value
-    value = res.register(self.visit(node.value_node, context))
+    op = node.current_op
+
+    if op == [TokenType.PLUS, TokenType.EQ]:
+      left = res.register(self.visit(node.value_node, context))
+      right = context.symbol_table.get(var_name)
+
+      if isinstance(left, Number):
+        value = Number(left.value + right.value)
+      if isinstance(left, Bin):
+        value = Bin(left.value + right.value)
+      if isinstance(left, Bytes):
+        value = Bytes(left.value + right.value)
+      if isinstance(left, String):
+        value = String(left.value + right.value)
+      if isinstance(left, List):
+        value = List(left.value + right.value)
+      if isinstance(left, Dict):
+        value = Dict(left.value + right.value)
+    elif op == [TokenType.MINUS, TokenType.EQ]:
+      left = res.register(self.visit(node.value_node, context))
+      right = context.symbol_table.get(var_name)
+
+      if isinstance(left, Number):
+        value = Number(left.value - right.value)
+      if isinstance(left, Bin):
+        value = Bin(left.value - right.value)
+      if isinstance(left, Bytes):
+        value = Bytes(left.value - right.value)
+      if isinstance(left, String):
+        value = String(left.value - right.value)
+      if isinstance(left, List):
+        value = List(left.value - right.value)
+      if isinstance(left, Dict):
+        value = Dict(left.value - right.value)
+    elif op == [TokenType.MUL, TokenType.EQ]:
+      left = res.register(self.visit(node.value_node, context))
+      right = context.symbol_table.get(var_name)
+
+      if isinstance(left, Number):
+        value = Number(left.value * right.value)
+      if isinstance(left, Bin):
+        value = Bin(left.value * right.value)
+      if isinstance(left, Bytes):
+        value = Bytes(left.value * right.value)
+      if isinstance(left, String):
+        value = String(left.value * right.value)
+      if isinstance(left, List):
+        value = List(left.value * right.value)
+      if isinstance(left, Dict):
+        value = Dict(left.value * right.value)
+    elif op == [TokenType.DIV, TokenType.EQ]:
+      left = res.register(self.visit(node.value_node, context))
+      right = context.symbol_table.get(var_name)
+
+      if isinstance(left, Number):
+        value = Number(left.value / right.value)
+      if isinstance(left, Bin):
+        value = Bin(left.value / right.value)
+      if isinstance(left, Bytes):
+        value = Bytes(left.value / right.value)
+      if isinstance(left, String):
+        value = String(left.value / right.value)
+      if isinstance(left, List):
+        value = List(left.value / right.value)
+      if isinstance(left, Dict):
+        value = Dict(left.value / right.value)
+    elif op == [TokenType.PERC, TokenType.EQ]:
+      left = res.register(self.visit(node.value_node, context))
+      right = context.symbol_table.get(var_name)
+
+      if isinstance(left, Number):
+        value = Number(left.value % right.value)
+      if isinstance(left, Bin):
+        value = Bin(left.value % right.value)
+      if isinstance(left, Bytes):
+        value = Bytes(left.value % right.value)
+      if isinstance(left, String):
+        value = String(left.value % right.value)
+      if isinstance(left, List):
+        value = List(left.value % right.value)
+      if isinstance(left, Dict):
+        value = Dict(left.value % right.value)
+    elif op == [TokenType.POW, TokenType.EQ]:
+      left = res.register(self.visit(node.value_node, context))
+      right = context.symbol_table.get(var_name)
+
+      if isinstance(left, Number):
+        value = Number(left.value ** right.value)
+      if isinstance(left, Bin):
+        value = Bin(left.value ** right.value)
+      if isinstance(left, Bytes):
+        value = Bytes(left.value ** right.value)
+      if isinstance(left, String):
+        value = String(left.value ** right.value)
+      if isinstance(left, List):
+        value = List(left.value ** right.value)
+      if isinstance(left, Dict):
+        value = Dict(left.value ** right.value)
+    elif op == [TokenType.EQ]:
+      value = res.register(self.visit(node.value_node, context))
+
     if res.should_return(): return res
 
     if node.is_const:
@@ -4571,75 +5154,16 @@ class Interpreter:
   
   def visit_ForNode(self, node, context):
     res = RTResult()
-    elements = []
-
-    start_value = res.register(self.visit(node.start_value_node, context))
-    if res.should_return(): return res
-
-    end_value = res.register(self.visit(node.end_value_node, context))
-    if res.should_return(): return res
-
-    if node.step_value_node:
-      step_value = res.register(self.visit(node.step_value_node, context))
-      if res.should_return(): return res
-    else:
-      step_value = Number(1)
-
-    i = start_value.value
-
-    if step_value.value >= 0:
-      condition = lambda: i <= end_value.value
-    else:
-      condition = lambda: i >= end_value.value
-    
-    while condition():
-      context.symbol_table.set(node.var_name_tok.value, Number(i))
-      i += step_value.value
-
-      value = res.register(self.visit(node.body_node, context))
-      if res.should_return() and res.loop_should_continue == False and res.loop_should_break == False: return res
-      
-      if res.loop_should_continue:
-        continue
-      
-      if res.loop_should_break:
-        break
-
-      if res.loop_should_pass:
-        pass
-
-      elements.append(value)
+    elements = fast_memorize_for_loop(self, res, node, context, Number)
 
     return res.success(
       Number.null if node.should_return_null else
       List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
     )
 
-  
   def visit_WhileNode(self, node, context):
     res = RTResult()
-    elements = []
-
-    while True:
-      condition = res.register(self.visit(node.condition_node, context))
-      if res.should_return(): return res
-
-      if not condition.is_true():
-        break
-
-      value = res.register(self.visit(node.body_node, context))
-      if res.should_return() and res.loop_should_continue == False and res.loop_should_break == False: return res
-
-      if res.loop_should_continue:
-        continue
-      
-      if res.loop_should_break:
-        break
-        
-      if res.loop_should_pass:
-        pass
-
-      elements.append(value)
+    elements = fast_memorize_while_loop(self, res, node, context)
 
     return res.success(
       Number.null if node.should_return_null else
@@ -4787,16 +5311,7 @@ class Interpreter:
     iterable = res.register(self.visit(node.iterable_node, context))
     it = iterable.iter()
 
-    elements = []
-
-    for it_res in it:
-      elt = res.register(it_res)
-      if res.should_return(): return res
-
-      context.symbol_table.set(var_name, elt)
-
-      elements.append(res.register(self.visit(body, context)))
-      if res.should_return(): return res
+    elements = fast_memorize_for_in_loop(self, res, context, var_name, body, it)
     
     if should_return_null: return res.success(Number.null)
     return res.success(elements)
@@ -4984,6 +5499,7 @@ global_symbol_table.set("id", BuiltInFunction.id)
 global_symbol_table.set("bit_to_int", BuiltInFunction.bit_to_int)
 global_symbol_table.set("Int", BuiltInFunction.Int)
 global_symbol_table.set("Char", BuiltInFunction.Char)
+global_symbol_table.set("List", BuiltInFunction.List)
 global_symbol_table.set("Bin", BuiltInFunction.Bin)
 global_symbol_table.set("Float", BuiltInFunction.Float)
 global_symbol_table.set("Str", BuiltInFunction.Str)
@@ -5007,37 +5523,68 @@ global_symbol_table.set("len", BuiltInFunction.len)
 global_symbol_table.set("Run", BuiltInFunction.run)
 global_symbol_table.set("wait", BuiltInFunction.wait)
 
+global_symbol_table.classes["CUDA"] = {
+    "add": GPUFunction.add,
+    "sub": GPUFunction.sub,
+    "mul": GPUFunction.mul,
+    "div": GPUFunction.div,
+    "sqrt": GPUFunction.sqrt,
+    "round": GPUFunction.round,
+    "sin": GPUFunction.sin,
+    "cos": GPUFunction.cos,
+    "tan": GPUFunction.tan,
+    "exp": GPUFunction.exp,
+    "gamma": GPUFunction.gamma,
+    "log2": GPUFunction.log2,
+    "factorial": GPUFunction.factorial,
+    "floor": GPUFunction.floor,
+    "radians": GPUFunction.radians
+}
+
+global_symbol_table.set("CUDA", ClassInstance("CUDA", global_symbol_table.classes["CUDA"]))
+
 def run(fn, text, context=None, entry_pos=None):
-  # Generate tokens
-  lexer = Lexer(fn, text)
-  tokens, error = lexer.make_tokens()
-  if error: return None, error
+    # Generate tokens
+    lexer = Lexer(fn, text)
+    tokens, error = lexer.make_tokens()
 
-  # Generate AST
-  parser = Parser(tokens)
-  ast = parser.parse()
-  if ast.error: return None, ast.error
+    n_tokens = []
 
-  # Run program
-  interpreter = Interpreter()
-  context_was_none = context is None
-  context = Context('<program>', context, entry_pos)
-  if context_was_none:
-    context.symbol_table = global_symbol_table
-  else:
-    context.symbol_table = context.parent.symbol_table
-  result = interpreter.visit(ast.node, context)
-  ret = result.func_return_value
-  if context_was_none and ret:
-    if not isinstance(ret, Number):
-      return None, RTError(
-        ret.pos_start, ret.pos_end,
-        "Exit code must be Number",
-        context
-      )
-    exit(ret.value)
+    for tok in tokens:
+        if tok is not None:
+            n_tokens.append(tok)
 
-  return result.value, result.error
+    if error:
+        return None, error
+
+    # Generate AST
+    parser = Parser(n_tokens)
+    ast = parser.parse()
+    if ast.error:
+        return None, ast.error
+
+    # Run program
+    interpreter = Interpreter()
+
+    # Ensure context is not None
+    if context is None:
+        context = Context('<program>', None, entry_pos)
+        context.symbol_table = global_symbol_table
+    else:
+        context.symbol_table = context.parent.symbol_table if context.parent else global_symbol_table
+
+    result = interpreter.visit(ast.node, context)
+    ret = result.func_return_value
+    if context.parent is None and ret:
+        if not isinstance(ret, Number):
+            return None, RTError(
+                ret.pos_start, ret.pos_end,
+                "Exit code must be Number",
+                context
+            )
+        sys.exit(ret.value)
+
+    return result.value, result.error
 
 def isLangExtension(x):
 	if x.endswith(".br"):
