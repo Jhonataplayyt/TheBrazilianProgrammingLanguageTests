@@ -2076,8 +2076,6 @@ class Parser:
       else:
         step_value = None
 
-    print(self.current_tok)
-
     if not self.current_tok.matches(TokenType.KEYWORD, 'then'):
       return res.failure(InvalidSyntaxError(
         self.current_tok.pos_start, self.current_tok.pos_end,
