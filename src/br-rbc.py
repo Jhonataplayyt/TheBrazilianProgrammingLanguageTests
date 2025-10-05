@@ -83,6 +83,7 @@ def main():
 
         try:
             code_block = matches[0]
+
             result, error = run('<stdin>', code_block)
             
             if error:

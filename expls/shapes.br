@@ -37,10 +37,6 @@ function ColoredRectangle(x, y, R, G, B)
     resetColor()
 end
 
-println("Quadrado verde\n")
+println("Retangulo verde\n")
 
-ColoredSquare(10, 0, 255, 0)
-
-println("")
-
-println("Cor de maçã verde")
+ColoredRectangle(10, 5, 0, 255, 0)

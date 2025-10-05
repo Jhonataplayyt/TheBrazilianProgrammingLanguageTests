@@ -1,29 +1,35 @@
-import ctypes
-import platform
 from Brazilian.Libs.faster import *
-
-system = platform.system()
-
-LibPath = None
-
-if platform.system() == 'Windows':
-    LibPath = './src/Brazilian/Base/basBR.dll'
-else:
-    LibPath = './src/Brazilian/Base/libbasBR.so'
-
-basBR = ctypes.CDLL(LibPath, winmode=0)
-
-basBR.input_char.argtypes = [ctypes.c_char_p]
-basBR.input_char.restype = ctypes.c_char_p
+from . import utils
+import sys
+import os
 
 def input_char(msg: str):
-    msg_bytes = msg.encode('utf-8')
+    print(msg, end='')
 
-    result = basBR.input_char(msg_bytes)
+    result = None
 
-    result_str = result
+    if os.name == 'nt':
+        import msvcrt
 
+        result = msvcrt.getch()
+    else:
+        import tty
+        import termios
+
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+
+        ch = None
+
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        result = ch
+    
     try:
-        return result_str.decode('utf-8')
+        return result.decode('utf-8')
     except:
-        return result_str
+        return result

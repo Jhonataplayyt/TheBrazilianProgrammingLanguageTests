@@ -14,4 +14,12 @@
     #endif
 #endif
 
-extern "C" basBR_API const char* input_key(const char* msg);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+basBR_API const char* input_char(const char* msg);
+
+#ifdef __cplusplus
+}
+#endif

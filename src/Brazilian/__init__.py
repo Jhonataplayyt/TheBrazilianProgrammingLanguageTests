@@ -142,6 +142,8 @@ classes = {}
 
 current_op = None
 
+current_class = None
+
 #######################################
 # ERRORS
 #######################################
@@ -4856,6 +4858,8 @@ class SymbolTable:
 # INTERPRETER
 #######################################
 
+global_symbol_table = SymbolTable()
+
 class Interpreter:
   def __init__(self):
     self.context = None
@@ -4922,7 +4926,7 @@ class Interpreter:
     if var_name in global_variables:
       value = context.symbol_table.get_global(var_name)
     else:
-        value = context.symbol_table.get(var_name)
+      value = context.symbol_table.get(var_name)
 
     if not value:
       return res.failure(RTError(
@@ -5198,17 +5202,31 @@ class Interpreter:
     res = RTResult()
     args = []
 
+    global current_class
+
     value_to_call = res.register(self.visit(node.node_to_call, context))
     if res.should_return(): return res
     value_to_call = value_to_call.copy().set_pos(node.pos_start, node.pos_end)
 
     for arg_node in node.arg_nodes:
       args.append(res.register(self.visit(arg_node, context)))
+
       if res.should_return(): return res
+
+    try:
+      if value_to_call.name in res.register(self.visit(current_class, context)).fields:
+        args.append(res.register(self.visit(current_class, context)))
+      else:
+        pass
+    except:
+      pass
+
+    current_class = None
 
     return_value = res.register(value_to_call.execute(args))
     if res.should_return(): return res
     return_value = return_value.copy().set_pos(node.pos_start, node.pos_end).set_context(context)
+
     return res.success(return_value)
 
   def visit_ReturnNode(self, node, context):
@@ -5400,9 +5418,17 @@ class Interpreter:
     noun = res.register(self.visit(node.noun, context))
     if res.should_return(): return res
 
+    global current_class
+
     verb = node.verb.value
 
+    if isinstance(noun, ClassInstance):
+      current_class = node.noun
+    else:
+      current_class = None
+
     result, error = noun.get_dot(verb)
+
     if error: return res.failure(error)
     return res.success(result)
 
@@ -5480,7 +5506,6 @@ def make_argv():
     argv.append(String(arg).set_pos(fake_pos, fake_pos))
   return List(argv).set_pos(fake_pos, fake_pos)
 
-global_symbol_table = SymbolTable()
 global_symbol_table.set("null", Number.null)
 global_symbol_table.set("false", Number.false)
 global_symbol_table.set("true", Number.true)

@@ -1,4 +1,4 @@
-import "C:/Users/tempe/Desktop/AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/modules/random.br"
+import "/workspaces/codespaces-blank/TheBrazilianProgrammingLanguageTests/modules/random.br"
 
 function generateCPF()
     c = 0

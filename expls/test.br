@@ -1,67 +1,90 @@
-class Maçã
-    cor = null
+class keyboardKeys
+    current_key = null
 
-    function construct(Cor)
-        if Cor == "Vermelha" then
-            this.cor = 1
-        elif Cor = "Verde" then
-            this.cor = 2
-        else
-            error("Erro, aqui são somente Maçãs Vermelhas ou Verdes.")
-        end
+    function construct()
+        this.current_key = "Esperando por tecla..."
     end
 
-    function Comer()
-        println("Nhãum Nhãum")
-        wait(3)
+    function all_Keys()
+        ch1 = input_key("")
 
-        if this.cor == 1 then
-            println("Maçã Vermelha comida.")
+        if ch1 == "\x1b" then
+            ch2 = input_key("")
+
+            if ch2 == "[" then
+                ch3 = input_key("")
+
+                switch ch3
+                    case "A"
+                        this.current_key = "pgup"
+
+                        return "pgup"
+                    case "B"
+                        this.current_key = "home"
+
+                        return "pgdn"
+                    case "C"
+                        this.current_key = "home"
+
+                        return "end"
+                    case "D"
+                        this.current_key = "home"
+                        
+                        return "home"
+                    else
+                        return null
+                end
+            else
+                this.current_key = "esc"
+                
+                return "esc"
+            end
         else
-            println("Maçã Verde comida.")
+            switch ch1
+                case "\r"
+                    this.current_key = "enter"
+                    
+                    return "enter"
+                case "\n"
+                    this.current_key = "enter"
+                    
+                    return "enter"
+                case " "
+                    this.current_key = "space"
+                    
+                    return "space"
+                else
+                    this.current_key = ch1
+                    
+                    return ch1
+            end
         end
     end
 end
 
-struct CoresMaçâs
-    vermelha
-    verde
-end
+keyboardK = keyboardKeys()
 
-cor = CoresMaçâs{}
-cor.vermelha = "Vermelha"
-cor.verde = "Verde"
+keyboardK.construct()
 
-a = null
-
-println("Maçã Vermelha. 1\nMaçã Verde. 2")
+println(keyboardK.current_key)
 
 while true then
-    try
-        a = Int(input_key("                        : "))
-        println(a)
+    key = keyboardK.all_Keys()
 
-        if a == 1 then
-            🍎 = Maçã()
-
-            println(🍎)
-
-            🍎.construct(cor.vermelha, 🍎)
-
-            🍎.Comer(🍎)
-
-            break
-        elif a == 2 then
-            🍎 = Maçã()
-            🍎.construct(cor.verde, 🍎)
-
-            🍎.Comer(🍎)
+    switch key
+        case "pgup"
+            println("Seta para cima")
+        case "pgdn"
+            println("Seta para baixo")
+        case "home"
+            println("Seta para a esquerda")
+        case "end"
+            println("Seta para a direita")
+        case "esc"
+            println("esc\n\nSaindo...")
 
             break
         else
-            println("Os números precisam ser 1 ou 2.")
-        end
-    catch as e
-        println("Os números precisam ser 1 ou 2.")
+            println(key)
     end
 end

@@ -27,18 +27,17 @@ type.toxic = "Toxic"
 type.addicted = "Addicted"
 
 class You
-
     name = null
     gender = null
     type = null
 
-    function construct(name, gender, type, this)
+    function construct(name, gender, type)
         this.name = name
         this.gender = gender
         this.type = type
     end
 
-    function reveal(this)
+    function reveal()
         if this.gender == "Men" then
             this.gender = "Gay"
         elif this.gender == "Women" then

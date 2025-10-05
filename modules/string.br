@@ -1,11 +1,4 @@
-struct String
-    lenstr
-    replace
-end
-
-string = String{}
-
-string.lenstr = function (val)
+function lenstr(val)
     temp = []
 
     for x in val then
@@ -15,7 +8,7 @@ string.lenstr = function (val)
     return len(temp)
 end
 
-string.replace = function (original, old, new)
+function replace(original, old, new)
     if not is_string(original) or not is_string(old) or not is_string(new) then
         println("All arguments must be strings")
     end
@@ -36,7 +29,7 @@ string.replace = function (original, old, new)
     while i <= len(lst) then
         n = ""
 
-        for np = 0 to string.lenstr(old) then
+        for np = 0 to lenstr(old) then
             try
                 n = n + lst[i + np]
             catch as e
@@ -49,7 +42,7 @@ string.replace = function (original, old, new)
 
             n = ""
 
-            i = i + string.lenstr(old)
+            i = i + lenstr(old)
         else
             try
                 temp = temp + lst[i]

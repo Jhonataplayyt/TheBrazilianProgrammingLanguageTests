@@ -12,8 +12,6 @@ def main():
       pass
     pass
   #except Exception as e:
-  #  print(e)
-
   #  try:
   #    try:
   #      print(f"Error: file or parameter not exists {sys.argv[1]}")
