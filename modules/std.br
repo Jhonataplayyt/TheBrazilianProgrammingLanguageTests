@@ -1,5 +1,0 @@
-do std
-    import "C:/Users/tempe/Desktop/AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/modules/os.br"
-    import "C:/Users/tempe/Desktop/AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/modules/math.br"
-    import "C:/Users/tempe/Desktop/AllSv/BrazilianTestInterpreter/BrazilianProgrammingLanguage/modules/string.br"
-end
