@@ -31,28 +31,28 @@ function replace(original, old, new)
 
         for np = 0 to lenstr(old) then
             try
-                n = n + lst[i + np]
+                n += lst / (i + np)
             catch as e
-                pass
+                println(e)
             end
         end
 
         if n == old then
-            temp = temp + new
+            temp += new
 
             n = ""
 
-            i = i + lenstr(old)
+            i += lenstr(old)
         else
             try
-                temp = temp + lst[i]
+                temp += lst / i
             catch as e
                 pass
             end
 
             n = ""
 
-            i = i + 1
+            i += 1
         end
     end
 

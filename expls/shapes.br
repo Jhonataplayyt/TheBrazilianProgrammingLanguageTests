@@ -1,11 +1,3 @@
-function Square(x)
-    Rectangle(x, x)
-end
-
-function ColoredSquare(x, R, G, B)
-    ColoredRectangle(x, x, R, G, B)
-end
-
 function Rectangle(x, y)
     a = ""
     
@@ -22,7 +14,7 @@ end
 
 function ColoredRectangle(x, y, R, G, B)
     a = ""
-    foregroundColor(R, G, B)
+    backgroundColor(R, G, B)
 
     for i = 0 to y then
         for j = 0 to x then
@@ -37,6 +29,18 @@ function ColoredRectangle(x, y, R, G, B)
     resetColor()
 end
 
+function Square(x)
+    Rectangle(x, x)
+end
+
+function ColoredSquare(x, R, G, B)
+    ColoredRectangle(x, x, R, G, B)
+end
+
 println("Retangulo verde\n")
 
 ColoredRectangle(10, 5, 0, 255, 0)
+
+resetColor()
+
+system("clear")

@@ -1,1 +1,11 @@
-CUDA.add(1, 2)
+mystr string = "Teste"
+
+poinmystr = pointer(mystr)
+
+addrmystr = address(poinmystr)
+
+println(addrmystr)
+
+derefmystr = deref(addrmystr, "string")
+
+println(derefmystr)

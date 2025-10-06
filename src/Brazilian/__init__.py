@@ -101,6 +101,11 @@ def lineTry(Try: Any, Except: any, exception:Any = None):
   except (exception if Exception == None else Exception) as e:
     return Except
 
+_MEMORY_REGISTRY = []
+
+def _keep_alive(obj):
+  _MEMORY_REGISTRY.append(obj)
+
 #######################################
 # OPEN FILES (so they don't get automatically closed by GC)
 #######################################
@@ -3565,8 +3570,8 @@ class List(Value):
   def dived_by(self, other):
     if isinstance(other, Number):
       try:
-        return self.elements[other.value], None
-      except:
+        return self.elements[other.value - 1], None
+      except Exception as e:
         return None, RTError(
           other.pos_start, other.pos_end,
           'Element at this index could not be retrieved from list because index is out of bounds',
@@ -3775,7 +3780,7 @@ class BuiltInFunction(BaseFunction):
 
   
   @args(['R', 'G', "B"])
-  def execute_backgroundColor(self, exec_ctx):
+  def execute_foregroundColor(self, exec_ctx):
     R = int(str(exec_ctx.symbol_table.get('R')))
     G = int(str(exec_ctx.symbol_table.get('G')))
     B = int(str(exec_ctx.symbol_table.get('B')))
@@ -3786,7 +3791,7 @@ class BuiltInFunction(BaseFunction):
 
   
   @args(['R', 'G', "B"])
-  def execute_foregroundColor(self, exec_ctx):
+  def execute_backgroundColor(self, exec_ctx):
     R = int(str(exec_ctx.symbol_table.get('R')))
     G = int(str(exec_ctx.symbol_table.get('G')))
     B = int(str(exec_ctx.symbol_table.get('B')))
@@ -3925,7 +3930,24 @@ class BuiltInFunction(BaseFunction):
     bit = exec_ctx.symbol_table.get('bit')
 
     try:
-      return RTResult().success(String(str(val.value, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
+      if isinstance(val, Number):
+        if "." in str(val.value):
+          return RTResult().success(String(str(float(val.value))))
+        else:
+          return RTResult().success(String(str(int(val.value))))
+      elif isinstance(val, String):
+        return RTResult().success(String(str(str(val.value))))
+      elif isinstance(val, Bin):
+        print(val.value.decode('utf-8'))
+        return RTResult().success(String(str(val.value)))
+      elif isinstance(val, Bytes):
+        return RTResult().success(String(str(val.value)))
+      else:
+        return RTResult().failure(RTError(
+          self.pos_start, self.pos_end,
+          "The value or bit needs be Number, String Bin or Bytes, not '" + str(type(val)) + "'",
+          exec_ctx
+        ))
     except:
       return RTResult().failure(RTError(
         self.pos_start, self.pos_end,
@@ -4042,42 +4064,120 @@ class BuiltInFunction(BaseFunction):
         except:
             pass
 
-  @args(['var'])
+  @args(["value"])
   def execute_pointer(self, exec_ctx):
-    var = exec_ctx.symbol_table.get('var')
+    value = exec_ctx.symbol_table.get("value")
 
-    if isinstance(var, String):
-      val = ctypes.pointer(ctypes.c_char_p(var.value))
-      valp = ctypes.pointer(val)
+    if isinstance(value, String):
+      buf = ctypes.create_string_buffer(value.value.encode("utf-8"))
+      _keep_alive(buf)
 
-      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+      return RTResult().success(Number(ctypes.addressof(buf)))
 
-      return RTResult().success(Bin(realb))
-    elif isinstance(var, Number):
-      val = ctypes.c_int(int(var.value))
-      valp = ctypes.pointer(val)
+    elif isinstance(value, Number):
+      if float(value.value).is_integer():
+        cnum = ctypes.c_int(int(value.value))
+      else:
+        cnum = ctypes.c_double(float(value.value))
 
-      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+      _keep_alive(cnum)
 
-      return RTResult().success(Bin(realb))
-    elif isinstance(var, Bin):
-      val = ctypes.c_int(var.value)
-      valp = ctypes.pointer(val)
+      return RTResult().success(Number(ctypes.addressof(cnum)))
 
-      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+    elif isinstance(value, Bytes):
+      data = value.value
+      buf = ctypes.create_string_buffer(data, len(data))
+      _keep_alive(buf)
 
-      return RTResult().success(Bin(realb))
-    elif isinstance(var, Bytes):
-      val = ctypes.pointer(ctypes.create_string_buffer(var.value))
-      valp = ctypes.pointer(val)
+      return RTResult().success(Number(ctypes.addressof(buf)))
 
-      realb = ctypes.string_at(ctypes.cast(valp, ctypes.c_void_p).value, ctypes.sizeof(val))
+    elif isinstance(value, Bin):
+      bits = value.value
 
-      return RTResult().success(Bin(realb))
+      if len(bits) % 8 != 0:
+        return RTResult().failure(RTError(
+          self.pos_start, self.pos_end,
+          "Bin length must be a multiple of 8",
+          exec_ctx
+        ))
+      
+      raw = int(bits, 2).to_bytes(len(bits) // 8, "big")
+      buf = ctypes.create_string_buffer(raw, len(raw))
+      _keep_alive(buf)
+
+      return RTResult().success(Number(ctypes.addressof(buf)))
+
     else:
       return RTResult().failure(RTError(
         self.pos_start, self.pos_end,
-        "The index needs be Number, String, Bytes or Bin type, not " + str(type(val)),
+        "Invalid value for pointer(): expected Number, String, Bytes or Bin, not '"
+        + str(type(value)) + "'",
+        exec_ctx
+      ))
+
+  @args(["ptr"])
+  def execute_address(self, exec_ctx):
+    ptr = exec_ctx.symbol_table.get("ptr")
+
+    if not isinstance(ptr, Number):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "Invalid value for address(): expected Number, not '" + str(type(ptr)) + "'",
+        exec_ctx
+      ))
+
+    return RTResult().success(Number(ptr.value))
+
+  @args(["addr", "typ", "len"], [Number.null, Number.null, Number(32)])
+  def execute_deref(self, exec_ctx):
+    addr = exec_ctx.symbol_table.get("addr")
+    typ  = exec_ctx.symbol_table.get("typ")
+    _len = exec_ctx.symbol_table.get("len")
+
+    if not isinstance(addr, Number) or not isinstance(typ, String):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "The arguments for deref must be (Number, String), not '"
+        + str(type(addr)) + ", " + str(type(typ)) + "'",
+        exec_ctx
+      ))
+
+    address = addr.value
+    type_str = typ.value.lower()
+    length = _len.value if isinstance(_len, Number) and _len.value is not None else 32
+
+    try:
+      if type_str == 'string':
+        raw = ctypes.string_at(address)
+        
+        return RTResult().success(String(raw.decode("utf-8")))
+      elif type_str == 'int':
+        int_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_int))
+
+        return RTResult().success(Number(int_ptr.contents.value))
+      elif type_str == 'float':
+        float_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_double))
+
+        return RTResult().success(Number(float_ptr.contents.value))
+      elif type_str == 'bytes':
+        data = ctypes.string_at(address, length)
+
+        return RTResult().success(Bytes(data))
+      elif type_str == 'bin':
+        data = ctypes.string_at(address, length)
+        bits = "".join(f"{b:08b}" for b in data)
+
+        return RTResult().success(Bin(bits))
+      else:
+        return RTResult().failure(RTError(
+          self.pos_start, self.pos_end,
+          f"Unknown type '{type_str}'",
+          exec_ctx
+        ))
+    except Exception as e:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "Error while dereferencing as '" + type_str + "': " + str(e),
         exec_ctx
       ))
   
@@ -4281,6 +4381,8 @@ BuiltInFunction.extend          = BuiltInFunction("extend")
 BuiltInFunction.len		          = BuiltInFunction("len")
 BuiltInFunction.run			        = BuiltInFunction("run")
 BuiltInFunction.wait            = BuiltInFunction("wait")
+BuiltInFunction.deref           = BuiltInFunction("deref")
+BuiltInFunction.address         = BuiltInFunction("address")
 
 class GPUFunction(BaseFunction):
     def __init__(self, name):
@@ -5545,6 +5647,8 @@ global_symbol_table.set("extend", BuiltInFunction.extend)
 global_symbol_table.set("len", BuiltInFunction.len)
 global_symbol_table.set("Run", BuiltInFunction.run)
 global_symbol_table.set("wait", BuiltInFunction.wait)
+global_symbol_table.set("deref", BuiltInFunction.deref)
+global_symbol_table.set("address", BuiltInFunction.address)
 
 global_symbol_table.classes["CUDA"] = {
     "add": GPUFunction.add,
