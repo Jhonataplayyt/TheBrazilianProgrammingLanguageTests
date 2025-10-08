@@ -1,11 +1,27 @@
-mystr string = "Teste"
+function bin_to_str(bin_str)
+    result_str = ""
 
-poinmystr = pointer(mystr)
+    for i = 0 to len(bin_str) step 8 then
+        bin_byte = bin_str / [i, i + 8, 0]
 
-addrmystr = address(poinmystr)
+        if bin_byte == "00000000" then
+            break
+        end
 
-println(addrmystr)
+        result_str += chr(Int(bin_byte, 2))
+    end
 
-derefmystr = deref(addrmystr, "string")
+    return reverse(result_str)
+end
 
-println(derefmystr)
+test = "Teste"
+
+pointest = pointer(test)
+
+addrtest = address(pointest)
+
+dectest = deref(addrtest, false, "bin")
+
+ttest = Str(dectest)
+
+println(bin_to_str(ttest))
