@@ -18,7 +18,7 @@ test = "Teste"
 
 pointest = pointer(test)
 
-addrtest = address(pointest)
+addrtest = address(test)
 
 dectest = deref(addrtest, false, "bin")
 

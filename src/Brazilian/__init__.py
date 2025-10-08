@@ -4217,6 +4217,8 @@ class BuiltInFunction(BaseFunction):
           return RTResult().success(Number(addr))
         elif hasattr(ptr.value, "value") and hasattr(ptr.value, "_type_"):
           return RTResult().success(Number(ctypes.addressof(ptr.value)))
+        else:
+          raise Exception()
       except:
         if isinstance(ptr, String):
           buf = ctypes.create_string_buffer(ptr.value.encode('utf-8'))
