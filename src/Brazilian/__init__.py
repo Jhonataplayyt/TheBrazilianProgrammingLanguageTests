@@ -107,12 +107,28 @@ def _keep_alive(obj):
   _MEMORY_REGISTRY.append(obj)
 
 def is_normal_double(val):
-    bits = struct.unpack('>Q', struct.pack('>d', val))[0]
+  bits = struct.unpack('>Q', struct.pack('>d', val))[0]
 
-    exponent = (bits >> 52) & 0x7FF
-    mantissa = bits & ((1 << 52) - 1)
+  exponent = (bits >> 52) & 0x7FF
+  mantissa = bits & ((1 << 52) - 1)
 
-    return exponent != 0 and exponent != 0x7FF
+  return exponent != 0 and exponent != 0x7FF
+
+def is_address_mapped(address: int) -> bool:
+  if not isinstance(address, int) or address <= 0:
+    return False
+  try:
+    with open("/proc/self/maps", "r") as f:
+      for line in f:
+        m = re.match(r'^([0-9a-fA-F]+)-([0-9a-fA-F]+)\s', line)
+        if m:
+          start = int(m.group(1), 16)
+          end = int(m.group(2), 16)
+          if start <= address < end:
+            return True
+  except Exception:
+    return False
+  return False
 
 #######################################
 # OPEN FILES (so they don't get automatically closed by GC)
@@ -4126,16 +4142,20 @@ class BuiltInFunction(BaseFunction):
         break
       except ValueError:
         print(f"'{text}' must be an integer. Try again!")
+
     return RTResult().success(Number(number))
 
   
   @args(['value'], [Number.null])
   def execute_exit(self, exec_ctx):
     sys.exit(0 if str(exec_ctx.symbol_table.get('value')) == '0' else int(str(exec_ctx.symbol_table.get('value'))))
+
     return RTResult().success(Number.null)
 
   @args(["value"])
   def execute_pointer(self, exec_ctx):
+    global CALLBACK, _registry
+
     value = exec_ctx.symbol_table.get("value")
 
     if isinstance(value, String):
@@ -4143,7 +4163,6 @@ class BuiltInFunction(BaseFunction):
       _keep_alive(buf)
 
       return RTResult().success(Object(buf))
-
     elif isinstance(value, Number):
       if float(value.value).is_integer():
         cnum = ctypes.c_int(int(value.value))
@@ -4153,282 +4172,288 @@ class BuiltInFunction(BaseFunction):
       _keep_alive(cnum)
 
       return RTResult().success(Object(cnum))
-
     elif isinstance(value, Bytes):
-      data = value.value
-
-      buf = ctypes.create_string_buffer(data, len(data))
+      buf = ctypes.create_string_buffer(value.value, len(value.value))
       _keep_alive(buf)
 
       return RTResult().success(Object(buf))
-
     elif isinstance(value, Bin):
       bits = value.value
 
       if len(bits) % 8 != 0:
-        return RTResult().failure(RTError(
-          self.pos_start, self.pos_end,
-          "Bin length must be a multiple of 8",
-          exec_ctx
-        ))
+        return RTResult().failure(RTError(self.pos_start, self.pos_end, "Bin length must be a multiple of 8", exec_ctx))
       
       raw = int(bits, 2).to_bytes(len(bits) // 8, "big")
       buf = ctypes.create_string_buffer(raw, len(raw))
-
       _keep_alive(buf)
 
       return RTResult().success(Object(buf))
-
     elif isinstance(value, (BaseFunction, StructInstance, ClassInstance)):
-      global CALLBACK
-
       def pfunc():
-        global _registry
-
         obj = value
-
         addr = id(obj)
-
         _registry[addr] = obj
-
         return addr
-
+      
       cf = CALLBACK(pfunc)
+      _keep_alive(cf)
 
+      _registry[id(cf)] = value
       return RTResult().success(Object(cf))
-
     else:
-      return RTResult().failure(RTError(
-        self.pos_start, self.pos_end,
-        "Invalid value for pointer(): expected Number, String, Bytes or Bin, not '"
-        + str(type(value)) + "'",
-        exec_ctx
-      ))
+      return RTResult().failure(RTError(self.pos_start, self.pos_end, "Invalid value for pointer(): expected Number, String, Bytes, Bin or Function", exec_ctx))
 
   @args(["ptr"])
   def execute_address(self, exec_ctx):
+    global CALLBACK, _registry
+
     ptr = exec_ctx.symbol_table.get("ptr")
 
     try:
-      try:
-        if isinstance(ptr.value, ctypes._CFuncPtr):
-          addr = ctypes.cast(ptr.value, ctypes.c_void_p).value
+      if isinstance(ptr.value, ctypes._CFuncPtr):
+        addr = ctypes.cast(ptr.value, ctypes.c_void_p).value
+        _registry[addr] = ptr.value
 
-          return RTResult().success(Number(addr))
-        elif hasattr(ptr.value, "value") and hasattr(ptr.value, "_type_"):
-          return RTResult().success(Number(ctypes.addressof(ptr.value)))
+        return RTResult().success(Number(addr))
+      elif hasattr(ptr.value, "value") and hasattr(ptr.value, "_type_"):
+        return RTResult().success(Number(ctypes.addressof(ptr.value)))
+      else:
+        raise Exception()
+    except:
+      if isinstance(ptr, String):
+        buf = ctypes.create_string_buffer(ptr.value.encode("utf-8"))
+        _keep_alive(buf)
+
+        return RTResult().success(Number(ctypes.addressof(buf)))
+      elif isinstance(ptr, Number):
+        if float(ptr.value).is_integer():
+          cnum = ctypes.c_int(int(ptr.value))
         else:
-          raise Exception()
-      except:
-        if isinstance(ptr, String):
-          buf = ctypes.create_string_buffer(ptr.value.encode('utf-8'))
-          _keep_alive(buf)
+          cnum = ctypes.c_double(float(ptr.value))
 
-          return RTResult().success(Number(ctypes.addressof(buf)))
+        _keep_alive(cnum)
 
-        elif isinstance(ptr, Number):
-          if float(ptr.value).is_integer():
-            cnum = ctypes.c_int(int(ptr.value))
-          else:
-            cnum = ctypes.c_double(float(ptr.value))
+        return RTResult().success(Number(ctypes.addressof(cnum)))
+      elif isinstance(ptr, Bytes):
+        buf = ctypes.create_string_buffer(ptr.value, len(ptr.value))
+        _keep_alive(buf)
 
-          _keep_alive(cnum)
+        return RTResult().success(Number(ctypes.addressof(buf)))
+      elif isinstance(ptr, Bin):
+        cnum = ctypes.c_int(int(ptr.value, 2))
+        _keep_alive(cnum)
 
-          return RTResult().success(Number(ctypes.addressof(cnum)))
+        return RTResult().success(Number(ctypes.addressof(cnum)))
+      elif isinstance(ptr, (BaseFunction, StructInstance, ClassInstance)):
+        def pfunc():
+          obj = ptr
+          addr = id(obj)
+          _registry[addr] = obj
+          return addr
+        
+        cf = CALLBACK(pfunc)
+        _keep_alive(cf)
+        _registry[id(cf)] = ptr
 
-        elif isinstance(ptr, Bytes):
-          buf = ctypes.create_string_buffer(ptr.value, len(ptr.value))
-          _keep_alive(buf)
-
-          return RTResult().success(Number(ctypes.addressof(buf)))
-
-        elif isinstance(ptr, Bin):
-          cnum = ctypes.c_int(int(ptr.value, 2))
-          _keep_alive(cnum)
-
-          return RTResult().success(Number(ctypes.addressof(cnum)))
-      
-        elif isinstance(ptr, (BaseFunction, StructInstance, ClassInstance)):
-          global CALLBACK
-
-          def pfunc():
-            global _registry
-
-            obj = ptr
-
-            addr = id(obj)
-
-            _registry[addr] = obj
-
-            return addr
-
-          cf = CALLBACK(pfunc)
-
-          return RTResult().success(Number(ctypes.cast(cf, ctypes.c_void_p).value))
-
-        else:
-          raise Exception("Unsupported type")
-
-    except Exception as e:
-      return RTResult().failure(RTError(
-        self.pos_start, self.pos_end,
-        f"Invalid value for address(): {e}",
-        exec_ctx
-      ))
+        return RTResult().success(Number(ctypes.cast(cf, ctypes.c_void_p).value))
+      else:
+        return RTResult().failure(RTError(self.pos_start, self.pos_end, "Unsupported type for address()", exec_ctx))
 
   @args(["addr", "auto", "typ", "len"], [Number.null, Number.true, Number.null, Number(32)])
   def execute_deref(self, exec_ctx):
+    global _registry, CALLBACK
     addr = exec_ctx.symbol_table.get("addr")
+    auto = exec_ctx.symbol_table.get("auto")
     typ  = exec_ctx.symbol_table.get("typ")
     _len = exec_ctx.symbol_table.get("len")
-
-    auto = exec_ctx.symbol_table.get("auto")
-
-    if not (isinstance(addr, Number) and isinstance(typ, String) or typ == Number.null):
-      return RTResult().failure(RTError(
-        self.pos_start, self.pos_end,
-        "The arguments for deref must be (Number, true or false, String), not '"
-        + str(type(addr)) + ", " + str(type(typ)) + "'",
-        exec_ctx
-      ))
-
+    
+    if not (isinstance(addr, Number) and (isinstance(typ, String) or typ == Number.null)):
+      return RTResult().failure(RTError(self.pos_start, self.pos_end, f"The arguments for deref must be (Number, true/false, String or null), not '{type(addr)}, {type(typ)}'", exec_ctx))
+    
     address = addr.value
-
-    type_str = None
+    length = _len.value if isinstance(_len, Number) and _len.value is not None else 32
 
     try:
       type_str = typ.value.lower()
     except:
-      pass
+      type_str = None
+    if auto.value and type_str is None:
+      if address in _registry:
+        obj = _registry[address]
 
-    length = _len.value if isinstance(_len, Number) and _len.value is not None else 32
+        try:
+          obj = obj()
 
-    global CALLBACK, _registry
+          return RTResult().success(_registry[obj])
+        except:
+          return RTResult().success(obj)
+      else:
+        min_int, max_int = -2147483648, 2147483647
 
-    min_int, max_int = -2147483648, 2147483647
+        str_ptr = None
 
-    str_ptr = None
+        try:
+          str_ptr = ctypes.string_at(address).decode('utf-8')
+        except:
+          pass
 
-    try:
-      str_ptr = ctypes.string_at(address).decode('utf-8')
-    except:
-      pass
+        float_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_double)).contents.value
+        int_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_int)).contents.value
 
-    float_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_double)).contents.value
-    int_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_int)).contents.value
-
-    float_c = is_normal_double(float_ptr)
-    int_c = min_int <= int_ptr <= max_int
-    str_c = (re.fullmatch(r"[ -~]+", str_ptr) if str_ptr is not None else False)
-
-    if auto.value:
-      try:
-        bits = None
+        float_c = is_normal_double(float_ptr)
+        int_c = min_int <= int_ptr <= max_int
+        str_c = (re.fullmatch(r"[ -~]+", str_ptr) if str_ptr is not None else False)
 
         if str_c:
           raw = ctypes.string_at(address)
         
           return RTResult().success(String(raw.decode("utf-8")))
         elif int_c and (not float_c):
-          return RTResult().success(Number(int_ptr.contents.value))
+          return RTResult().success(Number(int_ptr))
         elif float_c:
-          return RTResult().success(Number(float_ptr.contents.value))
+          return RTResult().success(Number(float_ptr))
         else:
-          raise Exception()
-      except:
-        faddr = ctypes.cast(address, CALLBACK)
-
-        addr = faddr()
-
-        obj = _registry[addr]
-
-        return RTResult().success(obj)
-    else:
-      try:
-        if type_str == 'string':
-          raw = ctypes.string_at(address)
+          pass
         
-          return RTResult().success(String(raw.decode("utf-8")))
-        elif type_str == 'int':
-          int_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_int))
+    try:
+      if type_str == 'string':
+        raw = ctypes.string_at(address, length)
+        s = raw.split(b'\x00', 1)[0]
 
-          return RTResult().success(Number(int_ptr.contents.value))
-        elif type_str == 'float':
-          float_ptr = ctypes.cast(address, ctypes.POINTER(ctypes.c_double))
+        return RTResult().success(String(s.decode("utf-8")))
+      elif type_str == 'bytes':
+        raw = ctypes.string_at(address, length)
 
-          return RTResult().success(Number(float_ptr.contents.value))
-        elif type_str == 'bytes':
-          if str_c:
-            try:
-              bits = str_ptr.encode('utf-8')
-            except:
-              bits = str_ptr
-          elif int_c and (not float_c):
-            bits = int_ptr.to_bytes(2, byteorder='big')
-          elif float_c:
-            bits = struct.pack('d', float_ptr)
-          else:
-            raise Exception()
+        return RTResult().success(Bytes(raw))
+      elif type_str == 'bin':
+        raw = ctypes.string_at(address, length)
+        bits = ''.join(f'{b:08b}' for b in raw)
 
-          return RTResult().success(Bytes(bits))
-        elif type_str == 'bin':
-          if str_c:
-            bits = ''.join(format(ord(char), '08b') for char in str_ptr)
-          elif int_c and (not float_c):
-            bits = bin(int_ptr)[2:]
-          elif float_c:
-            packed = struct.pack('<d', float_ptr)
-            bits = ''.join(f'{byte:08b}' for byte in packed)
-          else:
-            raise Exception()
+        return RTResult().success(Bin(bits))
+      elif type_str == 'int':
+        val = ctypes.cast(address, ctypes.POINTER(ctypes.c_int)).contents.value
 
-          return RTResult().success(Bin(bits))
-        elif type_str == 'function':
-          faddr = ctypes.cast(address, CALLBACK)
+        return RTResult().success(Number(val))
+      elif type_str == 'float':
+        val = ctypes.cast(address, ctypes.POINTER(ctypes.c_double)).contents.value
 
-          addr = faddr()
+        return RTResult().success(Number(val))
+      elif type_str == 'function':
+        obj = _registry[address]
 
-          obj = _registry[addr]
+        try:
+          obj = obj()
 
+          return RTResult().success(_registry[obj])
+        except:
           return RTResult().success(obj)
+        
+        return RTResult().failure(RTError(self.pos_start, self.pos_end, "Function not found in registry", exec_ctx))
+      else:
+        return RTResult().failure(RTError(self.pos_start, self.pos_end, f"Unknown type '{type_str}'", exec_ctx))
+    except Exception as e:
+      return RTResult().failure(RTError(self.pos_start, self.pos_end, f"Error while dereferencing as '{type_str}': {e}", exec_ctx))
 
-        else:
-          return RTResult().failure(RTError(
-            self.pos_start, self.pos_end,
-            f"Unknown type '{type_str}'",
-            exec_ctx
-          ))
-      except Exception as e:
-        return RTResult().failure(RTError(
-          self.pos_start, self.pos_end,
-          "Error while dereferencing as '" + type_str + "': " + str(e),
-          exec_ctx
-        ))
-  
-  @args(["bytes"])
+  @args(["space", "typ"], [Number.null, Number.null])
   def execute_malloc(self, exec_ctx):
-    _bytes = exec_ctx.symbol_table.get("bytes")
+    space = exec_ctx.symbol_table.get("space")
+    typ = exec_ctx.symbol_table.get("typ")
 
-    ptr = basBR.malloc(_bytes.value)
+    if isinstance(typ, String) and typ.value == "function":
+      size = 8
+    elif isinstance(space, Number):
+      size = space.value
+    else:
+      size = 8
+
+    ptr = basBR.malloc(size)
 
     return RTResult().success(Number(ptr))
-  
+
   @args(["ptr", "content", "length"])
   def execute_memmove(self, exec_ctx):
     ptr = exec_ctx.symbol_table.get("ptr")
     content = exec_ctx.symbol_table.get("content")
     length = exec_ctx.symbol_table.get("length")
 
-    _exec = basBR.memmove(ptr.value, content.value, length.value)
+    if not (hasattr(ptr, "value") and isinstance(ptr.value, int)):
+      return RTResult().failure(RTError(self.pos_start, self.pos_end, "Invalid ptr", exec_ctx))
+    
+    dest = ptr.value
 
-    return RTResult().success(Number(_exec))
-  
+    if isinstance(content, String):
+      data = content.value.encode('utf-8')
+      _keep_alive(data)
+
+      _exec = basBR.memmove(ctypes.c_void_p(dest), ctypes.c_char_p(data), length.value if isinstance(length, Number) else len(data))
+
+      _registry[dest] = content
+
+      return RTResult().success(Number(_exec))
+    elif isinstance(content, Number):
+      if float(content.value).is_integer():
+        cnum = ctypes.c_int(int(content.value))
+      else:
+        cnum = ctypes.c_double(float(content.value))
+
+      _keep_alive(cnum)
+
+      _exec = basBR.memmove(ctypes.c_void_p(dest), ctypes.byref(cnum), ctypes.sizeof(cnum))
+
+      _registry[dest] = content
+
+      return RTResult().success(Number(_exec))
+    elif isinstance(content, Bytes):
+      data = content.value
+
+      _keep_alive(data)
+      
+      _exec = basBR.memmove(ctypes.c_void_p(dest), ctypes.c_char_p(data), len(data) if isinstance(length, Number) and length.value else len(data))
+      
+      _registry[dest] = content
+
+      return RTResult().success(Number(_exec))
+    elif isinstance(content, Bin):
+      raw = int(content.value, 2).to_bytes((len(content.value) + 7) // 8, 'big')
+
+      _keep_alive(raw)
+
+      _exec = basBR.memmove(ctypes.c_void_p(dest), ctypes.c_char_p(raw), len(raw))
+
+      _registry[dest] = content
+
+      return RTResult().success(Number(_exec))
+    elif isinstance(content, (BaseFunction, StructInstance, ClassInstance)):
+      def pfunc():
+        obj = content
+        addr = id(obj)
+        _registry[addr] = obj
+        return addr
+      
+      cf = CALLBACK(pfunc)
+
+      _keep_alive(cf)
+
+      cf_addr = ctypes.cast(cf, ctypes.c_void_p).value
+
+      _registry[cf_addr] = content
+      _registry[dest] = content
+
+      _exec = basBR.memmove(ctypes.c_void_p(dest), ctypes.byref(ctypes.c_void_p(cf_addr)), ctypes.sizeof(ctypes.c_void_p))
+
+      return RTResult().success(Number(_exec))
+    else:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        "Invalid value for memmove(): " + str(type(content)),
+        exec_ctx
+      ))
+
   @args(["ptr"])
   def execute_free(self, exec_ctx):
     ptr = exec_ctx.symbol_table.get("ptr")
-
     basBR.free(ptr.value)
-
+    
     return RTResult().success(Number.null)
 
   @args(["lpAddress", "dwSize", "flAllocationType", "flProtect"])

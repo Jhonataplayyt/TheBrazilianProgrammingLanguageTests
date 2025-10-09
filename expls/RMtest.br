@@ -1,27 +1,23 @@
 function bin_to_str(bin_str)
-    result_str = ""
-
-    for i = 0 to len(bin_str) step 8 then
-        bin_byte = bin_str / [i, i + 8, 0]
-
-        if bin_byte == "00000000" then
-            break
-        end
-
-        result_str += chr(Int(bin_byte, 2))
+  result_str = ""
+  for i = 0 to len(bin_str) step 8 then
+    bin_byte = bin_str / [i, i + 8, 0]
+    if bin_byte == "00000000" then
+      break
     end
-
-    return reverse(result_str)
+    result_str += chr(Int(bin_byte, 2))
+  end
+  return reverse(result_str)
 end
 
-test = "Teste"
+test = bin_to_str
 
-pointest = pointer(test)
+ptr = malloc(null, "function")
 
-addrtest = address(test)
+memmove(ptr, test, null)
 
-dectest = deref(addrtest, false, "bin")
+bts = deref(ptr)
 
-ttest = Str(dectest)
+println(bts)
 
-println(bin_to_str(ttest))
+free(ptr)
