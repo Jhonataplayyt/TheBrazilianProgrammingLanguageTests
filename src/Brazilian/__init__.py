@@ -4361,6 +4361,10 @@ class BuiltInFunction(BaseFunction):
 
     if isinstance(typ, String) and typ.value == "function":
       size = 8
+    elif isinstance(typ, String) and typ.value == "int":
+      size = ctypes.sizeof(ctypes.c_int)
+    elif isinstance(typ, String) and typ.value == "float":
+      size = ctypes.sizeof(ctypes.c_double)
     elif isinstance(space, Number):
       size = space.value
     else:
@@ -4453,7 +4457,7 @@ class BuiltInFunction(BaseFunction):
   def execute_free(self, exec_ctx):
     ptr = exec_ctx.symbol_table.get("ptr")
     basBR.free(ptr.value)
-    
+
     return RTResult().success(Number.null)
 
   @args(["lpAddress", "dwSize", "flAllocationType", "flProtect"])

@@ -10,9 +10,9 @@ function bin_to_str(bin_str)
   return reverse(result_str)
 end
 
-test = bin_to_str
+test = 3.14
 
-ptr = malloc(null, "function")
+ptr = malloc(null, "float")
 
 memmove(ptr, test, null)
 
