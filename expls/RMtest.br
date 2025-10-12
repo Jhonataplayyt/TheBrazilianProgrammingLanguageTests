@@ -1,23 +1,18 @@
-function bin_to_str(bin_str)
-  result_str = ""
-  for i = 0 to len(bin_str) step 8 then
-    bin_byte = bin_str / [i, i + 8, 0]
-    if bin_byte == "00000000" then
-      break
-    end
-    result_str += chr(Int(bin_byte, 2))
-  end
-  return reverse(result_str)
-end
 
-test = 3.14
+out = extern("Asm", "
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [rip+msg]
+    mov rdx, 15
+    syscall
 
-ptr = malloc(null, "float")
+    xor rax, rax
 
-memmove(ptr, test, null)
+    ret
 
-bts = deref(ptr)
+msg:
+    .asciz \"Hello, World!\\n\"
 
-println(bts)
+")
 
-free(ptr)
+println(out)

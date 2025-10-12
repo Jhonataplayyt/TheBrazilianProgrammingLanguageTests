@@ -21,6 +21,9 @@ import Brazilian.Libs.basBR as basBR
 import ctypes
 from Brazilian.Libs.faster import fast_memorize_for_loop, fast_memorize_while_loop, fast_memorize_for_in_loop
 from numba import cuda
+import cppyy
+from lupa import LuaRuntime
+from pyinlineasm import inline_asm as __asm__
 
 #######################################
 # StringsWithArrowsAndMore
@@ -3957,14 +3960,18 @@ class BuiltInFunction(BaseFunction):
       ))
 
   
-  @args(['value', 'bit'], [None, Number.null])
+  @args(['value', 'bit'], [Number.null, Number.null])
   def execute_Int(self, exec_ctx):
     val = exec_ctx.symbol_table.get('value')
     bit = exec_ctx.symbol_table.get('bit')
 
     try:
-      return RTResult().success(Number(int(val.value, int(bit.value) if not isinstance(bit, (Null, true, false)) else 0)))
-    except:
+      if isinstance(bit, (Null, True, False)):
+        return RTResult().success(Number(int(val.value, int(bit.value))))
+      else:
+        return RTResult().success(Number(int(val.value)))
+    except Exception as e:
+      print(e)
       return RTResult().failure(RTError(
         self.pos_start, self.pos_end,
         "The value or bit needs be Integer, not '" + str(type(val)) + "'",
@@ -4144,6 +4151,153 @@ class BuiltInFunction(BaseFunction):
         print(f"'{text}' must be an integer. Try again!")
 
     return RTResult().success(Number(number))
+  
+  @args(['lang', 'code', 'funcn', 'args', "pkg", 'include', "lib"], [Number.null, Number.null, Number.null, Number.null, Number.null, Number.null, Number.null])
+  def execute_extern(self, exec_ctx):
+    lang = exec_ctx.symbol_table.get('lang')
+    code = exec_ctx.symbol_table.get('code')
+    funcn = exec_ctx.symbol_table.get('funcn')
+    args = exec_ctx.symbol_table.get('args')
+    pkg = exec_ctx.symbol_table.get('pkg')
+    include = exec_ctx.symbol_table.get('include')
+    lib = exec_ctx.symbol_table.get('lib')
+
+    if not isinstance(lang, (String, Null)):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"The lang needs be String not {str(type(lib))}",
+        exec_ctx
+      ))
+    
+    if not isinstance(code, (String, Null)):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"The code needs be String not {str(type(lib))}",
+        exec_ctx
+      ))
+    
+    if not isinstance(funcn, (String, Null)):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"The funcn needs be String not {str(type(lib))}",
+        exec_ctx
+      ))
+    
+    if not isinstance(args, (List, Null)):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"The args needs be List not {str(type(lib))}",
+        exec_ctx
+      ))
+    
+    if not isinstance(pkg, (List, Null)):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"The pkg needs be List not {str(type(lib))}",
+        exec_ctx
+      ))
+
+    if not isinstance(include, (List, Null)):
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"The include needs be List not {str(type(lib))}",
+        exec_ctx
+      ))
+
+    obj = None
+
+    if lang.value == "Python":
+      exec(code.value)
+
+      if isinstance(funcn, Null):
+        return RTResult().success(Number.null)
+      else:
+        if isinstance(args, Null):
+          obj = eval(f'{funcn.value}()')
+        else:
+          n_args = []
+
+          for arg in args.value:
+            if isinstance(arg, String):
+              n_args.append(f'"{arg.value}"')
+            else:
+              n_args.append(str(arg.value))
+
+          obj = eval(f'{funcn.value}({", ".join(n_args)})')
+    elif lang.value == "Cpp":
+      cppyy.cppdef(code.value)
+
+      if isinstance(include, List):
+        for inc in include.value:
+          cppyy.include(inc.value)
+      elif isinstance(include, Null):
+        pass
+      else:
+        return RTResult().failure(RTError(
+          self.pos_start, self.pos_end,
+          f"The include needs be List not {str(type(lib))}",
+          exec_ctx
+        ))
+      
+      if isinstance(lib, List):
+        for lb in lib.value:
+          cppyy.load_library(lb.value)
+      elif isinstance(lib, Null):
+        pass
+      else:
+        return RTResult().failure(RTError(
+          self.pos_start, self.pos_end,
+          f"The lib needs be List not {str(type(lib))}",
+          exec_ctx
+        ))
+
+      if isinstance(funcn, Null):
+        obj = cppyy.gbl.main()
+      else:
+        if isinstance(args, Null):
+          obj = eval(f'cppyy.gbl.{funcn.value}()')
+        else:
+          n_args = []
+
+          for arg in args.value:
+            if isinstance(arg, String):
+              n_args.append(f'"{arg.value}"')
+            else:
+              n_args.append(str(arg.value))
+
+          obj = eval(f'cppyy.gbl.{funcn.value}({", ".join(n_args)})')
+    elif lang.value == "Asm":
+      obj = __asm__(code.value)
+    elif lang.value == "Lua":
+      lua = LuaRuntime()
+
+      lua.execute(code.value)
+
+      if isinstance(funcn, Null):
+        return RTResult().success(Number.null)
+      else:
+        if isinstance(args, Null):
+          obj = eval(f'lua.eval("{funcn.value}")()')
+        else:
+          n_args = []
+
+          for arg in args.value:
+            if isinstance(arg, String):
+              n_args.append(f'"{arg.value}"')
+            else:
+              n_args.append(str(arg.value))
+
+          obj = eval(f'lua.eval("{funcn.value}")({", ".join(n_args)})')
+    elif lang.value == "Julia":
+      pass
+    else:
+      return RTResult().failure(RTError(
+        self.pos_start, self.pos_end,
+        f"Extern language not identified '{str(lang)}'",
+        exec_ctx
+      ))
+
+    return RTResult().success(Object(obj))
 
   
   @args(['value'], [Number.null])
@@ -4737,6 +4891,7 @@ BuiltInFunction.encode          = BuiltInFunction("encode")
 BuiltInFunction.decode          = BuiltInFunction("decode")
 BuiltInFunction.range           = BuiltInFunction("range")
 BuiltInFunction.reverse         = BuiltInFunction("reverse")
+BuiltInFunction.extern          = BuiltInFunction("extern")
 
 class GPUFunction(BaseFunction):
     def __init__(self, name):
@@ -6013,6 +6168,7 @@ global_symbol_table.set("encode", BuiltInFunction.encode)
 global_symbol_table.set("decode", BuiltInFunction.decode)
 global_symbol_table.set("range", BuiltInFunction.range)
 global_symbol_table.set("reverse", BuiltInFunction.reverse)
+global_symbol_table.set("extern", BuiltInFunction.extern)
 
 global_symbol_table.classes["CUDA"] = {
     "add": GPUFunction.add,
