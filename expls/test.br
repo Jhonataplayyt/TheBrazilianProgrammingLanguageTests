@@ -1,0 +1,109 @@
+class keyboardKeys
+    current_key = null
+
+    function construct(msg)
+        this.current_key = msg
+    end
+
+    function Arrows()
+        if input_key("") == ~\xe0~ then
+            switch input_key("")
+                case "H"
+                    return "pgup"
+                case "P"
+                    return "pgdn"
+                case "K"
+                    return "home"
+                case "M"
+                    return "end"
+                else
+                   return null
+            end
+        else
+            return null
+        end
+    end
+
+    function all_Keys()
+        ch1 = input_key("")
+
+        if ch1 == "\x1b" then
+            ch2 = input_key("")
+
+            if ch2 == "[" then
+                ch3 = input_key("")
+
+                switch ch3
+                    case "A"
+                        this.current_key = "pgup"
+
+                        return "pgup"
+                    case "B"
+                        this.current_key = "home"
+
+                        return "pgdn"
+                    case "C"
+                        this.current_key = "home"
+
+                        return "end"
+                    case "D"
+                        this.current_key = "home"
+                        
+                        return "home"
+                    else
+                        return null
+                end
+            else
+                this.current_key = "esc"
+                
+                return "esc"
+            end
+        else
+            switch ch1
+                case "\r"
+                    this.current_key = "enter"
+                    
+                    return "enter"
+                case "\n"
+                    this.current_key = "enter"
+                    
+                    return "enter"
+                case " "
+                    this.current_key = "space"
+                    
+                    return "space"
+                else
+                    this.current_key = ch1
+                    
+                    return ch1
+            end
+        end
+    end
+end
+
+keyboardK = keyboardKeys()
+
+keyboardK.construct("Esperando por tecla...")
+
+println(keyboardK.current_key)
+
+while true then
+    key = keyboardK.all_Keys()
+
+    switch key
+        case "pgup"
+            println("Seta para cima")
+        case "pgdn"
+            println("Seta para baixo")
+        case "home"
+            println("Seta para a esquerda")
+        case "end"
+            println("Seta para a direita")
+        case "esc"
+            println("esc\n\nSaindo...")
+
+            break
+        else
+            println(key)
+    end
+end

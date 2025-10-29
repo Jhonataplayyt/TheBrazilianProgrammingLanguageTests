@@ -1,0 +1,27 @@
+struct Os
+    remove
+    open
+end
+
+os = Os{}
+
+os.remove = function (x) -> system("rm \"" + x + "\"") or system("del \"" + x + "\"") or system("Remove-Item -Path \"" + x + "\"")
+
+os.open = function (fn)
+    struct Open
+        read
+        write
+    end
+
+    no = Open{}
+
+    no.read = function ()
+        println("implemented later")
+    end
+
+    no.write = function (con)
+        system("echo \"" + con + "\" >> " + fn)
+    end
+
+    return no
+end

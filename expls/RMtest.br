@@ -1,0 +1,26 @@
+import "/storage/emulated/0/TheBrazilianProgrammingLanguageTests/modules/std.br"
+
+function gemini(prompt)
+    mbas = []
+    append(mbas, prompt)
+
+    return extern("Python", "
+import google.generativeai as genai
+
+genai.configure(api_key=\"AIzaSyC4Nh0BjQG0iZyyB8kAv5uFCdPR-sOIo0c\")
+model = genai.GenerativeModel(\"gemini-1.5-flash\")
+
+def gemini(prompt):
+    global model
+
+    return model.generate_content(prompt).text
+    
+", "gemini", mbas)
+
+end
+
+namespace
+    msggemini = gemini("Quem criou o conceito da relatividade")
+
+    std.dynamic_print(msggemini)
+end

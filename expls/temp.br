@@ -1,0 +1,34 @@
+import "/storage/emulated/0/TheBrazilianProgrammingLanguageTests/modules/std.br"
+
+function is_decimal(x)
+    val = split(Str(x), ".")
+
+    if len(val) == 2 then
+        return true
+    else
+        return false
+    end
+end
+
+function Decimal(val)
+    base = []
+    append(base, val)
+
+    return extern("Python", "
+import decimal
+
+def MDec(num):
+    return decimal.Decimal(num)
+
+", "MDec", base)
+end
+
+for i = 0 to 10 step 5 then
+    v1 = Decimal(std.random.randInt(0, i))
+    v2 = Decimal(std.math.Sqrt(std.random.randInt(0, i)))
+
+    std.dynamic_print(v1)
+    std.dynamic_print(v2)
+
+    std.dynamic_print(v1 + v2)
+end

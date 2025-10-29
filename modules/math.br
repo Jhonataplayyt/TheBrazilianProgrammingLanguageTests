@@ -1,0 +1,67 @@
+math = do
+    struct Math
+        Round
+        Abs
+        Sqrt
+    end
+
+    mathmain = Math{}
+
+    mathmain.Round = function Round(x, y)
+        val = 0
+
+        adj_a = ("%." + Str(y) + "f") % x
+
+        c = split(adj_a, ".")
+
+        if c[1] == "0" * y then
+            val = Int(c[2])
+
+            return val
+        end
+
+        val = x
+        return val
+    end
+
+    mathmain.Abs = function Abs(x)
+        if x < 0 then
+            return x - (x * 2)
+        else
+            return x
+        end
+    end
+
+    mathmain.Sqrt = function Sqrt(x)
+        a = x
+
+        if a == 0 then
+            return 0;
+        end
+
+        while true then
+            b = (a + x / a) / 2
+
+            if mathmain.Abs(a - b) < 0.00001 then
+                break
+            end
+
+            a = b
+        end
+
+        fn = Float("%.6f" % a)
+
+        val = mathmain.Round(fn, 6)
+    
+        s_val = split(Str(val), ".")
+
+        
+        if s_val[2] != "0" then
+            return val
+        else
+            return Int(val)
+        end
+    end
+
+    return mathmain
+end

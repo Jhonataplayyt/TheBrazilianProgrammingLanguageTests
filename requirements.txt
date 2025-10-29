@@ -1,0 +1,7 @@
+numba
+emoji
+lupa
+cppyy
+pyinlineasm
+quickjs
+pyyaml

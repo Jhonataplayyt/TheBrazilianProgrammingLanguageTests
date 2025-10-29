@@ -1,0 +1,37 @@
+
+random = do
+    struct rand
+        aa076
+        cc557
+        mm456
+        seed579
+
+        randomGeneration
+        randInt
+    end
+
+    randmain = rand{}
+
+    randmain.aa076 = 25214903917
+    randmain.cc557 = 11
+    randmain.mm456 = 2 ^ 16
+    randmain.seed579 = 42
+
+    randmain.randomGeneration = function (seed, a, c, m)
+        return (a * seed + c) % m
+    end
+
+    randmain.randInt = function (min, max)
+        rand_val = randmain.randomGeneration(randmain.seed579, randmain.aa076, randmain.cc557, randmain.mm456)
+
+        result = min + (rand_val % (max - min + 1))
+
+        randmain.seed579 = (rand_val * min + max) / (result - rand_val)
+
+        randmain.aa076 = randmain.aa076 + 1 
+
+        return result
+    end
+
+    return randmain
+end

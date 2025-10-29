@@ -1,0 +1,76 @@
+import "/storage/emulated/0/TheBrazilianProgrammingLanguageTests/modules/random.br"
+
+ic = 0
+ibc = 0
+
+println("jogo:\n    Pedra, Papel e Tesoura")
+println("        1.Pedra\n        2.Papel\n        3.Tesoura")
+
+while true then
+    if ic >= 3 then
+        println("Você Ganhou! de: \n    " + Str(ic) + "x" + Str(ibc))
+        
+        break
+    elif ibc >= 3 then
+        println("Você Perdeu! de: \n    " + Str(ibc) + "x" + Str(ic))
+          
+        break
+    end
+
+    ib = randInt(1, 3)
+
+    i = input("\n        Você: ")
+
+    if i == "cls" then
+        clear()
+        
+        println("jogo:\n    Pedra, Papel e Tesoura")
+        println("        1.Pedra\n        2.Papel\n        3.Tesoura")
+    elif i == "exit" then
+        exit(0)
+    elif i == "1" or i == "2" or i == "3" then
+        i = Int(i)
+
+        if i <= 3 then
+            if ib == 1 then
+                println("    Bot:\n              Pedra")
+            elif ib == 2 then
+                println("    Bot:\n              Papel")
+            else
+                println("    Bot: \n              Tesoura")
+            end
+
+            if i == 1 and ib == 3 then
+                println("Você Ganhou")
+                
+                ic += 1
+            elif i == 1 and ib == 2 then
+                println("Você Perdeu")
+                
+                ibc += 1
+            elif i == 2 and ib == 1 then
+                println("Você Ganhou")
+                
+                ic += 1
+            elif i == 2 and ib == 3 then
+                println("Você Perdeu")
+                
+                ibc += 1
+            elif i == 3 and ib == 2 then
+                println("Você Ganhou")
+                
+                ic += 1
+            elif i == 3 and ib == 1 then
+                println("Você Perdeu")
+                
+                ibc += 1
+            else
+                println("Empatou")
+            end
+        else
+            println("Você precisa colocar 1, 2, 3, cls ou exit para jogar e não '" + Str(i) + "'")
+        end
+    else
+        println("Você precisa colocar 1, 2, 3, cls ou exit para jogar e não '" + Str(i) + "'")
+    end
+end

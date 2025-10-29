@@ -1,0 +1,26 @@
+import "/storage/emulated/0/TheBrazilianProgrammingLanguageTests/modules/math.br"
+import "/storage/emulated/0/TheBrazilianProgrammingLanguageTests/modules/random.br"
+
+std = do
+    struct standard
+        dynamic_print
+        __asm__
+        math
+        random
+    end
+
+    mainstd = standard{}
+
+    mainstd.dynamic_print = function (_ from println($)) -> null
+
+    mainstd.__asm__ = function (code)
+        return extern("Asm", code)
+    end
+
+    mainstd.math = math
+
+    mainstd.random = random
+
+    return mainstd
+
+end

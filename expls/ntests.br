@@ -1,0 +1,80 @@
+class keyboardKeys
+    function Arrows()
+        if input_key("") == ~\xe0~ then
+            switch input_key("")
+                case "H"
+                    return "pgup"
+                case "P"
+                    return "pgdn"
+                case "K"
+                    return "home"
+                case "M"
+                    return "end"
+                else
+                   return null
+            end
+        else
+            return null
+        end
+    end
+
+    function all_Keys()
+        ch = input_key("")
+
+        switch ch
+            case ~\xe0~
+                ch2 = input_key("")
+
+                switch ch2
+                    case "H"
+                        return "pgup"
+                    case "P"
+                        return "pgdn"
+                    case "K"
+                        return "home"
+                    case "M"
+                        return "end"
+                    else
+                        return null
+                end
+            case "\x1b"
+                return "esc"
+            case "\r"
+                return "enter"
+            case "\n"
+                return "enter"
+            else
+                return ch
+        end
+    end
+end
+
+function detectar_tecla()
+    println("Pressione uma tecla (ESC para sair)")
+
+    ch2 = null
+    ch = null
+
+    while true then
+        keyboardK = keyboardKeys()
+        
+        switch keyboardK.Arrows()
+            case "pgup"
+                println("Seta para cima")
+            case "pgdn"
+                println("Seta para baixo")
+            case "home"
+                println("Seta para a esquerda")
+            case "end"
+                println("Seta para a direita")
+            else
+                println("Saindo...")
+
+                break
+        end
+    end
+end
+
+while true then
+    print(input_key(""))
+end

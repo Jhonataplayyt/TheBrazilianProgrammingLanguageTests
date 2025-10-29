@@ -1,0 +1,63 @@
+struct Type
+    normal
+    crazy
+    disabled
+    toxic
+    addicted
+end
+
+struct Gender
+    men
+    women
+    gay
+    transgender
+end
+
+gender = Gender{}
+gender.men = "Men"
+gender.women = "Women"
+gender.gay = "Gay"
+gender.transgender = "transgender"
+
+type = Type{}
+type.normal = "Normal"
+type.crazy = "Crazy"
+type.disabled = "Disabled"
+type.toxic = "Toxic"
+type.addicted = "Addicted"
+
+class You
+    name = null
+    gender = null
+    type = null
+
+    function construct(name, gender, type)
+        this.name = name
+        this.gender = gender
+        this.type = type
+    end
+
+    function reveal()
+        if this.gender == "Men" then
+            this.gender = "Gay"
+        elif this.gender == "Women" then
+            this.gender = "Transgender"
+        end
+
+        if this.type == "Normal" then
+            this.type = "Toxic"
+        elif this.type == "Crazy" then
+            this.type = "Disabled"
+        elif this.type == "Toxic" then
+            this.type = "Addicted"
+        end
+    end
+
+end
+
+you = You()
+you.construct("Gabriel", gender.men, type.normal, you)
+
+you.reveal()
+
+println(you)

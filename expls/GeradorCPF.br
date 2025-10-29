@@ -1,0 +1,38 @@
+import "/storage/emulated/0/TheBrazilianProgrammingLanguageTests/modules/random.br"
+
+function generateCPF()
+    c = 0
+    e = 0
+    cpf = ""
+
+    for i = 0 to 10 then
+        if c == 3 then
+            cpf = cpf + "."
+            c = 0
+            e = e + 1
+        else
+            c = c + 1
+            cpf = cpf + str(randInt(1, 9))
+        end
+    end
+
+    c = 0
+    cpfn = split(cpf, ".")
+    cpf = ""
+
+    for cpn in cpfn then
+        c = c + 1
+
+        if c == 2 then
+            cpf = cpf + cpn + "-"
+        elif c == 3 then
+            cpf = cpf + cpn
+        else
+            cpf = cpf + cpn + "."
+        end
+    end
+
+    return cpf
+end
+
+println(generateCPF())

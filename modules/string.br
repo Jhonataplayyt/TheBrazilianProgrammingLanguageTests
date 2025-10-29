@@ -1,0 +1,60 @@
+function lenstr(val)
+    temp = []
+
+    for x in val then
+        append(temp, x)
+    end
+
+    return len(temp)
+end
+
+function replace(original, old, new)
+    if not is_string(original) or not is_string(old) or not is_string(new) then
+        println("All arguments must be strings")
+    end
+
+    if old == "" then
+        println("The substring to replace cannot be empty")
+    end
+
+    lst = []
+    temp = ""
+
+    for org in original then
+        append(lst, org)
+    end
+
+    i = 0
+
+    while i <= len(lst) then
+        n = ""
+
+        for np = 0 to lenstr(old) then
+            try
+                n = n + lst[i + np]
+            catch as e
+                pass
+            end
+        end
+
+        if n == old then
+            temp = temp + new
+
+            n = ""
+
+            i = i + lenstr(old)
+        else
+            try
+                temp = temp + lst[i]
+            catch as e
+                pass
+            end
+
+            n = ""
+
+            i = i + 1
+        end
+    end
+
+    return temp
+end
